@@ -10,6 +10,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'data/local_conversation_store.dart';
 import 'data/niko_preferences_store.dart';
 import 'services/niko_chat_service.dart';
+import 'services/niko_api_chat_service.dart';
 import 'services/niko_speech_output_service.dart';
 import 'utils/text_direction.dart';
 
@@ -72,7 +73,7 @@ class _NikoHomePageState extends State<NikoHomePage> {
   final _scrollController = ScrollController();
   final _conversationStore = LocalConversationStore();
   final _preferencesStore = NikoPreferencesStore();
-  final NikoChatService _chatService = DemoNikoChatService();
+  final NikoApiChatService _chatService = NikoApiChatService();
   final NikoSpeechOutputService _speechOutput = NikoSpeechOutputService();
   NikoReplyLanguage _replyLanguage = NikoReplyLanguage.automatic;
   bool _isReplying = false;
@@ -223,6 +224,7 @@ class _NikoHomePageState extends State<NikoHomePage> {
   @override
   void dispose() {
     _speech.cancel();
+    _chatService.close();
     _speechOutput.stop();
     _messageController.dispose();
     _scrollController.dispose();
@@ -252,11 +254,18 @@ class _NikoHomePageState extends State<NikoHomePage> {
         _isReplying = false;
       });
       unawaited(_persistConversation());
+    } on NikoChatException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add(ChatMessage(text: error.message, fromUser: false));
+        _isReplying = false;
+      });
+      unawaited(_persistConversation());
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _messages.add(const ChatMessage(
-          text: 'تعذر تجهيز الرد حالياً. حاول مرة أخرى.',
+          text: 'حدث خطأ غير متوقع أثناء الاتصال بعقل نيكو. حاول مرة أخرى.',
           fromUser: false,
         ));
         _isReplying = false;
