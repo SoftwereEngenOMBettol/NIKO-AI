@@ -30,6 +30,9 @@ jobs:
       - name: Add iOS platform to app
         run: cp -R /tmp/niko_ios/ios mobile/ios
 
+      - name: Set iOS app display name
+        run: /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName NIKO" mobile/ios/Runner/Info.plist
+
       - name: Install dependencies
         working-directory: mobile
         run: flutter pub get
