@@ -7,6 +7,7 @@ import 'package:niko_ai/main.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
   testWidgets('NIKO opens with Arabic welcome and composer', (tester) async {
     await tester.pumpWidget(const NikoApp());
 
@@ -24,7 +25,6 @@ void main() {
 
     expect(find.text('مرحبا نيكو'), findsOneWidget);
   });
-}
 
   testWidgets('composer switches direction for English and Arabic input', (tester) async {
     await tester.pumpWidget(const NikoApp());
@@ -43,3 +43,4 @@ void main() {
       TextDirection.rtl,
     );
   });
+}
