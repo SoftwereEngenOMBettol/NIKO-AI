@@ -1,11 +1,7 @@
-name: Build NIKO Android APK
+name: Build NIKO Android APK (Secondary)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "mobile/**"
-      - ".github/workflows/android-apk.yml"
+  # Android is a secondary target. Run this workflow manually when needed.
   workflow_dispatch:
 
 permissions:
@@ -38,7 +34,7 @@ jobs:
         working-directory: mobile
         run: flutter analyze
 
-      - name: Run widget tests
+      - name: Run Flutter tests
         working-directory: mobile
         run: flutter test
 
