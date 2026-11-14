@@ -10,6 +10,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'data/local_conversation_store.dart';
 import 'data/niko_preferences_store.dart';
 import 'services/niko_chat_service.dart';
+import 'services/niko_speech_output_service.dart';
 import 'utils/text_direction.dart';
 
 void main() {
@@ -72,6 +73,7 @@ class _NikoHomePageState extends State<NikoHomePage> {
   final _conversationStore = LocalConversationStore();
   final _preferencesStore = NikoPreferencesStore();
   final NikoChatService _chatService = DemoNikoChatService();
+  final NikoSpeechOutputService _speechOutput = NikoSpeechOutputService();
   NikoReplyLanguage _replyLanguage = NikoReplyLanguage.automatic;
   bool _isReplying = false;
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -210,9 +212,18 @@ class _NikoHomePageState extends State<NikoHomePage> {
     });
   }
 
+  Future<void> _speakMessage(String text) async {
+    try {
+      await _speechOutput.speak(text);
+    } catch (_) {
+      _showVoiceMessage('تعذر تشغيل الصوت. تحقق من أصوات اللغة المثبتة على الجهاز.');
+    }
+  }
+
   @override
   void dispose() {
     _speech.cancel();
+    _speechOutput.stop();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -358,7 +369,10 @@ class _NikoHomePageState extends State<NikoHomePage> {
                   children: [
                     _buildWelcome(),
                     const SizedBox(height: 26),
-                    ..._messages.map((message) => _MessageBubble(message: message)),
+                    ..._messages.map((message) => _MessageBubble(
+                      message: message,
+                      onSpeak: message.fromUser ? null : () => _speakMessage(message.text),
+                    )),
                     if (_isReplying)
                       const Align(
                         alignment: Alignment.centerRight,
@@ -590,8 +604,9 @@ class _LanguageTag extends StatelessWidget {
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
+  const _MessageBubble({required this.message, this.onSpeak});
   final ChatMessage message;
+  final VoidCallback? onSpeak;
 
   @override
   Widget build(BuildContext context) {
@@ -616,13 +631,32 @@ class _MessageBubble extends StatelessWidget {
             color: isUser ? const Color(0xFF36706C) : const Color(0xFF283747),
           ),
         ),
-        child: Directionality(
-          textDirection: textDirectionFor(message.text),
-          child: Text(
-            message.text,
-            textAlign: TextAlign.start,
-            style: const TextStyle(color: Color(0xFFE6EDF4), fontSize: 14, height: 1.65),
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Directionality(
+              textDirection: textDirectionFor(message.text),
+              child: Text(
+                message.text,
+                textAlign: TextAlign.start,
+                style: const TextStyle(color: Color(0xFFE6EDF4), fontSize: 14, height: 1.65),
+              ),
+            ),
+            if (onSpeak != null)
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: IconButton(
+                  onPressed: onSpeak,
+                  icon: const Icon(Icons.volume_up_rounded, size: 18),
+                  color: const Color(0xFF78DCCB),
+                  tooltip: 'استمع إلى الرد',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 30),
+                ),
+              ),
+          ],
         ),
       ),
     );
