@@ -7,6 +7,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'data/local_conversation_store.dart';
+import 'data/niko_preferences_store.dart';
+import 'services/niko_chat_service.dart';
 
 void main() {
   runApp(const NikoApp());
@@ -67,6 +69,10 @@ class _NikoHomePageState extends State<NikoHomePage> {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final _conversationStore = LocalConversationStore();
+  final _preferencesStore = NikoPreferencesStore();
+  final NikoChatService _chatService = DemoNikoChatService();
+  NikoReplyLanguage _replyLanguage = NikoReplyLanguage.automatic;
+  bool _isReplying = false;
   final List<ChatMessage> _messages = [
     const ChatMessage(
       text: 'هلا، أنا نيكو. موجود معك — وش حاب نسوي اليوم؟',
@@ -78,6 +84,73 @@ class _NikoHomePageState extends State<NikoHomePage> {
   void initState() {
     super.initState();
     _restoreConversation();
+    _restorePreferences();
+  }
+
+  Future<void> _restorePreferences() async {
+    try {
+      final language = await _preferencesStore.loadReplyLanguage();
+      if (mounted) setState(() => _replyLanguage = language);
+    } catch (_) {
+      // Keep automatic language mode if preferences cannot be read.
+    }
+  }
+
+  Future<void> _showSettings() async {
+    var selectedLanguage = _replyLanguage;
+    final selected = await showDialog<NikoReplyLanguage>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('إعدادات نيكو'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('لغة ردود نيكو'),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<NikoReplyLanguage>(
+                initialValue: selectedLanguage,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                items: NikoReplyLanguage.values.map((language) {
+                  return DropdownMenuItem(
+                    value: language,
+                    child: Text(language.label),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setDialogState(() => selectedLanguage = value);
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'اختيار اللغة محفوظ على هذا الجهاز. وضع التلقائي سيعتمد على محرك اللغة عند ربط الذكاء الاصطناعي.',
+                style: TextStyle(color: Color(0xFF91A0B2), fontSize: 12, height: 1.5),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, selectedLanguage),
+              child: const Text('حفظ'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (selected == null) return;
+    await _preferencesStore.saveReplyLanguage(selected);
+    if (mounted) setState(() => _replyLanguage = selected);
   }
 
   Future<void> _restoreConversation() async {
@@ -139,19 +212,38 @@ class _NikoHomePageState extends State<NikoHomePage> {
     super.dispose();
   }
 
-  void _sendMessage([String? preset]) {
+  Future<void> _sendMessage([String? preset]) async {
     final text = (preset ?? _messageController.text).trim();
     if (text.isEmpty) return;
 
     setState(() {
       _messages.add(ChatMessage(text: text, fromUser: true));
-      _messages.add(const ChatMessage(
-        text: 'وصلتني رسالتك. واجهة المحادثة جاهزة، والخطوة التالية هي ربط عقل NIKO حتى أقدر أفهم طلبك وأرد عليك فعلياً.',
-        fromUser: false,
-      ));
+      _isReplying = true;
     });
     _messageController.clear();
     unawaited(_persistConversation());
+
+    try {
+      final reply = await _chatService.createReply(
+        userMessage: text,
+        language: _replyLanguage,
+      );
+      if (!mounted) return;
+      setState(() {
+        _messages.add(ChatMessage(text: reply, fromUser: false));
+        _isReplying = false;
+      });
+      unawaited(_persistConversation());
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add(const ChatMessage(
+          text: 'تعذر تجهيز الرد حالياً. حاول مرة أخرى.',
+          fromUser: false,
+        ));
+        _isReplying = false;
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -189,6 +281,18 @@ class _NikoHomePageState extends State<NikoHomePage> {
                     _buildWelcome(),
                     const SizedBox(height: 26),
                     ..._messages.map((message) => _MessageBubble(message: message)),
+                    if (_isReplying)
+                      const Align(
+                        alignment: Alignment.centerRight,
+                        child: Padding(
+                          padding: EdgeInsets.only(bottom: 12, right: 8),
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 14),
                   ],
                 ),
@@ -258,9 +362,7 @@ class _NikoHomePageState extends State<NikoHomePage> {
             tooltip: 'مسح المحادثة',
           ),
           IconButton(
-            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('الإعدادات ستُضاف في المرحلة القادمة.')),
-            ),
+            onPressed: _showSettings,
             icon: const Icon(Icons.tune_rounded, color: Color(0xFFB8C5D3)),
             tooltip: 'الإعدادات',
           ),
