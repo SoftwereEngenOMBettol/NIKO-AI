@@ -9,8 +9,8 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import 'data/local_conversation_store.dart';
 import 'data/niko_preferences_store.dart';
-import 'services/niko_chat_service.dart';
 import 'services/niko_api_chat_service.dart';
+import 'services/niko_chat_service.dart';
 import 'services/niko_speech_output_service.dart';
 import 'utils/text_direction.dart';
 
