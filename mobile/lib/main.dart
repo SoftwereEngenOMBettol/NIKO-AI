@@ -2,7 +2,11 @@
 // is still evolving. Keep the current stable widgets until the migration is ready.
 // ignore_for_file: deprecated_member_use
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import 'data/local_conversation_store.dart';
 
 void main() {
   runApp(const NikoApp());
@@ -35,8 +39,21 @@ class NikoApp extends StatelessWidget {
 
 class ChatMessage {
   const ChatMessage({required this.text, required this.fromUser});
+
   final String text;
   final bool fromUser;
+
+  Map<String, dynamic> toJson() => {
+        'text': text,
+        'fromUser': fromUser,
+      };
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    return ChatMessage(
+      text: json['text'] as String? ?? '',
+      fromUser: json['fromUser'] as bool? ?? false,
+    );
+  }
 }
 
 class NikoHomePage extends StatefulWidget {
@@ -49,12 +66,71 @@ class NikoHomePage extends StatefulWidget {
 class _NikoHomePageState extends State<NikoHomePage> {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
+  final _conversationStore = LocalConversationStore();
   final List<ChatMessage> _messages = [
     const ChatMessage(
       text: 'هلا، أنا نيكو. موجود معك — وش حاب نسوي اليوم؟',
       fromUser: false,
     ),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreConversation();
+  }
+
+  Future<void> _restoreConversation() async {
+    try {
+      final saved = await _conversationStore.loadMessages();
+      if (!mounted || saved.isEmpty) return;
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(saved.map(ChatMessage.fromJson));
+      });
+    } catch (_) {
+      // Keep the welcome conversation available if local storage is unavailable.
+    }
+  }
+
+  Future<void> _persistConversation() async {
+    await _conversationStore.saveMessages(
+      _messages.map((message) => message.toJson()).toList(),
+    );
+  }
+
+  Future<void> _clearConversation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('مسح المحادثة؟'),
+        content: const Text('سيتم حذف سجل المحادثة المحفوظ على هذا الجهاز.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('مسح'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await _conversationStore.clear();
+    if (!mounted) return;
+    setState(() {
+      _messages
+        ..clear()
+        ..add(const ChatMessage(
+          text: 'هلا، أنا نيكو. موجود معك — وش حاب نسوي اليوم؟',
+          fromUser: false,
+        ));
+    });
+  }
 
   @override
   void dispose() {
@@ -75,6 +151,7 @@ class _NikoHomePageState extends State<NikoHomePage> {
       ));
     });
     _messageController.clear();
+    unawaited(_persistConversation());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -174,6 +251,11 @@ class _NikoHomePageState extends State<NikoHomePage> {
                 ),
               ],
             ),
+          ),
+          IconButton(
+            onPressed: _clearConversation,
+            icon: const Icon(Icons.delete_sweep_rounded, color: Color(0xFFB8C5D3)),
+            tooltip: 'مسح المحادثة',
           ),
           IconButton(
             onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
