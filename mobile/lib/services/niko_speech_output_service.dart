@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_tts/flutter_tts.dart';
 
 /// Native text-to-speech output shared by iOS and Android.
@@ -14,7 +16,7 @@ class NikoSpeechOutputService {
     await _configure();
     await _engine.stop();
 
-    final language = _languageForText(message);
+    final language = speechLocaleForText(message);
     final availableLanguages = await _engine.getLanguages;
     final matchingLanguages = availableLanguages
         .whereType<String>()
@@ -32,7 +34,7 @@ class NikoSpeechOutputService {
   Future<void> _configure() async {
     if (_configured) return;
     // Keep speech in the foreground app session; do not request background audio.
-    await _engine.setSharedInstance(true);
+    if (Platform.isIOS) await _engine.setSharedInstance(true);
     await _engine.setSpeechRate(0.47);
     await _engine.setPitch(0.92);
     await _engine.setVolume(1.0);
@@ -63,9 +65,10 @@ class NikoSpeechOutputService {
     }
   }
 
-  String _languageForText(String text) {
-    if (RegExp(r'[\\u0600-\\u06FF]').hasMatch(text)) return 'ar-SA';
-    if (RegExp(r'[çğıöşüÇĞİÖŞÜ]').hasMatch(text)) return 'tr-TR';
-    return 'en-US';
-  }
+}
+
+String speechLocaleForText(String text) {
+  if (RegExp('[؀-ۿ]').hasMatch(text)) return 'ar-SA';
+  if (RegExp('[çğıöşüÇĞİÖŞÜ]').hasMatch(text)) return 'tr-TR';
+  return 'en-US';
 }
