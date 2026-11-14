@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'data/local_conversation_store.dart';
 import 'data/niko_preferences_store.dart';
 import 'services/niko_chat_service.dart';
+import 'utils/text_direction.dart';
 
 void main() {
   runApp(const NikoApp());
@@ -31,7 +32,6 @@ class NikoApp extends StatelessWidget {
           brightness: Brightness.dark,
           surface: const Color(0xFF151D29),
         ),
-        fontFamily: 'Roboto',
         useMaterial3: true,
       ),
       home: const NikoHomePage(),
@@ -73,6 +73,7 @@ class _NikoHomePageState extends State<NikoHomePage> {
   final NikoChatService _chatService = DemoNikoChatService();
   NikoReplyLanguage _replyLanguage = NikoReplyLanguage.automatic;
   bool _isReplying = false;
+  TextDirection _composerDirection = TextDirection.rtl;
   final List<ChatMessage> _messages = [
     const ChatMessage(
       text: 'هلا، أنا نيكو. موجود معك — وش حاب نسوي اليوم؟',
@@ -221,6 +222,7 @@ class _NikoHomePageState extends State<NikoHomePage> {
       _isReplying = true;
     });
     _messageController.clear();
+    _composerDirection = TextDirection.rtl;
     unawaited(_persistConversation());
 
     try {
@@ -443,6 +445,14 @@ class _NikoHomePageState extends State<NikoHomePage> {
           Expanded(
             child: TextField(
               controller: _messageController,
+              textDirection: _composerDirection,
+              textAlign: TextAlign.start,
+              onChanged: (value) {
+                final direction = textDirectionFor(value);
+                if (direction != _composerDirection) {
+                  setState(() => _composerDirection = direction);
+                }
+              },
               minLines: 1,
               maxLines: 4,
               textInputAction: TextInputAction.send,
@@ -513,7 +523,9 @@ class _MessageBubble extends StatelessWidget {
     return Align(
       alignment: isUser ? Alignment.centerLeft : Alignment.centerRight,
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 310),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * 0.78,
+        ),
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
         decoration: BoxDecoration(
@@ -528,9 +540,13 @@ class _MessageBubble extends StatelessWidget {
             color: isUser ? const Color(0xFF36706C) : const Color(0xFF283747),
           ),
         ),
-        child: Text(
-          message.text,
-          style: const TextStyle(color: Color(0xFFE6EDF4), fontSize: 14, height: 1.65),
+        child: Directionality(
+          textDirection: textDirectionFor(message.text),
+          child: Text(
+            message.text,
+            textAlign: TextAlign.start,
+            style: const TextStyle(color: Color(0xFFE6EDF4), fontSize: 14, height: 1.65),
+          ),
         ),
       ),
     );
