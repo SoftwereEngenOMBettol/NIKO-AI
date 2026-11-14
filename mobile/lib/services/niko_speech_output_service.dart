@@ -49,7 +49,7 @@ class NikoSpeechOutputService {
         final voiceLocale = item['locale']?.toString().toLowerCase() ?? '';
         final gender = item['gender']?.toString().toLowerCase() ?? '';
         if (voiceLocale.startsWith(locale.substring(0, 2).toLowerCase()) &&
-            gender.contains('male')) {
+            gender == 'male') {
           final identifier = item['identifier']?.toString();
           final name = item['name']?.toString();
           if (identifier != null && identifier.isNotEmpty) {
