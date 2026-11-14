@@ -5,6 +5,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import 'data/local_conversation_store.dart';
 import 'data/niko_preferences_store.dart';
@@ -73,6 +74,9 @@ class _NikoHomePageState extends State<NikoHomePage> {
   final NikoChatService _chatService = DemoNikoChatService();
   NikoReplyLanguage _replyLanguage = NikoReplyLanguage.automatic;
   bool _isReplying = false;
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  bool _speechInitialized = false;
+  bool _isListening = false;
   TextDirection _composerDirection = TextDirection.rtl;
   final List<ChatMessage> _messages = [
     const ChatMessage(
@@ -208,6 +212,7 @@ class _NikoHomePageState extends State<NikoHomePage> {
 
   @override
   void dispose() {
+    _speech.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -257,12 +262,83 @@ class _NikoHomePageState extends State<NikoHomePage> {
     });
   }
 
-  void _showVoiceNotice() {
+  Future<void> _toggleVoiceInput() async {
+    if (_isListening) {
+      await _speech.stop();
+      if (mounted) setState(() => _isListening = false);
+      return;
+    }
+
+    try {
+      if (!_speechInitialized) {
+        final available = await _speech.initialize(
+          onStatus: (status) {
+            if (!mounted) return;
+            setState(() => _isListening = status == 'listening');
+          },
+          onError: (error) {
+            if (!mounted) return;
+            setState(() => _isListening = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('تعذر التعرف على الصوت: ${error.errorMsg}'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          },
+        );
+        _speechInitialized = available;
+      }
+
+      if (!_speechInitialized) {
+        _showVoiceMessage('التعرف على الصوت غير متاح. تحقق من الأذونات وإعدادات الجهاز.');
+        return;
+      }
+
+      String? localeId;
+      if (_replyLanguage != NikoReplyLanguage.automatic) {
+        final prefix = switch (_replyLanguage) {
+          NikoReplyLanguage.arabic => 'ar',
+          NikoReplyLanguage.english => 'en',
+          NikoReplyLanguage.turkish => 'tr',
+          NikoReplyLanguage.automatic => '',
+        };
+        final locales = await _speech.locales();
+        final matching = locales.where(
+          (locale) => locale.localeId.toLowerCase().startsWith(prefix),
+        );
+        if (matching.isNotEmpty) {
+          localeId = matching.first.localeId;
+        } else {
+          _showVoiceMessage('لغة التعرف المطلوبة غير مثبتة أو غير مدعومة على الجهاز.');
+          return;
+        }
+      }
+
+      await _speech.listen(
+        localeId: localeId,
+        listenFor: const Duration(seconds: 45),
+        pauseFor: const Duration(seconds: 3),
+        onResult: (result) {
+          if (!mounted) return;
+          setState(() {
+            _messageController.text = result.recognizedWords;
+            _messageController.selection = TextSelection.collapsed(
+              offset: _messageController.text.length,
+            );
+            _composerDirection = textDirectionFor(result.recognizedWords);
+          });
+        },
+      );
+      if (mounted) setState(() => _isListening = _speech.isListening);
+    } catch (_) {
+      _showVoiceMessage('حدث خطأ أثناء تشغيل الميكروفون. تحقق من أذونات iPhone.');
+    }
+  }
+
+  void _showVoiceMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('الإدخال الصوتي قيد التطوير وسيُضاف بعد اختبار محركات الصوت.'),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 
@@ -432,14 +508,14 @@ class _NikoHomePageState extends State<NikoHomePage> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           IconButton.filledTonal(
-            onPressed: _showVoiceNotice,
+            onPressed: _toggleVoiceInput,
             style: IconButton.styleFrom(
               backgroundColor: const Color(0xFF1C2B37),
               foregroundColor: const Color(0xFF78DCCB),
               fixedSize: const Size(48, 48),
             ),
-            icon: const Icon(Icons.mic_none_rounded),
-            tooltip: 'الصوت',
+            icon: Icon(_isListening ? Icons.mic_rounded : Icons.mic_none_rounded),
+            tooltip: _isListening ? 'إيقاف الاستماع' : 'الإدخال الصوتي',
           ),
           const SizedBox(width: 9),
           Expanded(
