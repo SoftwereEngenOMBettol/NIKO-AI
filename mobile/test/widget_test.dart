@@ -25,3 +25,21 @@ void main() {
     expect(find.text('مرحبا نيكو'), findsOneWidget);
   });
 }
+
+  testWidgets('composer switches direction for English and Arabic input', (tester) async {
+    await tester.pumpWidget(const NikoApp());
+
+    await tester.enterText(find.byType(EditableText), 'Hello NIKO');
+    await tester.pump();
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).textDirection,
+      TextDirection.ltr,
+    );
+
+    await tester.enterText(find.byType(EditableText), 'مرحبا نيكو');
+    await tester.pump();
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).textDirection,
+      TextDirection.rtl,
+    );
+  });
