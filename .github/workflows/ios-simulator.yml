@@ -1,0 +1,55 @@
+name: Build NIKO iOS Simulator
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/ios-simulator.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios-simulator:
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate iOS platform files
+        run: flutter create --platforms=ios --org com.nikoai --project-name niko_ai /tmp/niko_ios
+
+      - name: Add iOS platform to app
+        run: cp -R /tmp/niko_ios/ios mobile/ios
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Analyze Dart code
+        working-directory: mobile
+        run: flutter analyze
+
+      - name: Run Flutter tests
+        working-directory: mobile
+        run: flutter test
+
+      - name: Build iOS Simulator app
+        working-directory: mobile
+        run: flutter build ios --simulator --no-codesign
+
+      - name: Upload iOS Simulator app
+        uses: actions/upload-artifact@v4
+        with:
+          name: niko-ai-ios-simulator
+          path: mobile/build/ios/iphonesimulator/Runner.app
+          if-no-files-found: error
+          retention-days: 14
