@@ -220,9 +220,9 @@ class _NikoHomePageState extends State<NikoHomePage> {
     setState(() {
       _messages.add(ChatMessage(text: text, fromUser: true));
       _isReplying = true;
+      _composerDirection = TextDirection.rtl;
     });
     _messageController.clear();
-    _composerDirection = TextDirection.rtl;
     unawaited(_persistConversation());
 
     try {
