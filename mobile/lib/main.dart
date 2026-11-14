@@ -1,3 +1,7 @@
+// Flutter 3.50 marks the Material library as deprecated while its replacement API
+// is still evolving. Keep the current stable widgets until the migration is ready.
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 
 void main() {
