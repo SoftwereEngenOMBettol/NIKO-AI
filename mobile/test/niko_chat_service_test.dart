@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:niko_ai/services/niko_chat_service.dart';
 
 void main() {
-  const service = DemoNikoChatService();
+  final service = DemoNikoChatService();
 
   test('Arabic reply mode returns an Arabic setup notice', () async {
     final reply = await service.createReply(
