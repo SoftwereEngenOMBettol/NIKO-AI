@@ -30,8 +30,11 @@ jobs:
       - name: Add iOS platform to app
         run: cp -R /tmp/niko_ios/ios mobile/ios
 
-      - name: Set iOS app display name
-        run: /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName NIKO" mobile/ios/Runner/Info.plist
+      - name: Configure iOS app identity and speech permissions
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName NIKO" mobile/ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSSpeechRecognitionUsageDescription string NIKO uses speech recognition to turn your spoken words into message text." mobile/ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string NIKO uses the microphone only when you tap the voice input button." mobile/ios/Runner/Info.plist
 
       - name: Install dependencies
         working-directory: mobile
