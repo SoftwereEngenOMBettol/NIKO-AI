@@ -131,7 +131,7 @@ The characterization tests were updated in commit `4a2f2e38cdd4fa6524426af353038
 - Provider/generator fakes are not called when JWT is missing.
 - A valid test JWT can reach the endpoint handlers.
 
-These tests use local fakes and do not make paid provider calls. The new commit triggered Backend CI run #? (commit `4a2f2e38cdd4fa6524426af353038cf9d6a687af`): the updated API authentication tests passed, and the run reported **1 failed, 24 passed**. The sole remaining failure was the PostgreSQL RLS test caused by the malformed migration delimiters. See https://github.com/SoftwereEngenOMBettol/NIKO-AI/actions/runs/43738542621. Newer runs on subsequent documentation commits were still pending at the time of this update.
+These tests use local fakes and do not make paid provider calls. The new commit triggered Backend CI run #57 (commit `4a2f2e38cdd4fa6524426af353038cf9d6a687af`): the updated API authentication tests passed, and the run reported **1 failed, 24 passed**. The sole remaining failure was the PostgreSQL RLS test caused by the malformed migration delimiters. See https://github.com/SoftwereEngenOMBettol/NIKO-AI/actions/runs/43738542621. Newer runs on subsequent documentation commits were still pending at the time of this update.
 
 ### RLS follow-up and current blocker
 
