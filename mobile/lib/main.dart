@@ -3,6 +3,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
@@ -11,6 +12,7 @@ import 'data/local_conversation_store.dart';
 import 'data/niko_preferences_store.dart';
 import 'services/niko_api_chat_service.dart';
 import 'services/niko_chat_service.dart';
+import 'services/niko_image_service.dart';
 import 'services/niko_speech_output_service.dart';
 import 'utils/text_direction.dart';
 
@@ -75,6 +77,7 @@ class _NikoHomePageState extends State<NikoHomePage> {
   final _preferencesStore = NikoPreferencesStore();
   final NikoApiChatService _chatService = NikoApiChatService();
   final NikoSpeechOutputService _speechOutput = NikoSpeechOutputService();
+  final NikoImageService _imageService = NikoImageService();
   NikoReplyLanguage _replyLanguage = NikoReplyLanguage.automatic;
   bool _isReplying = false;
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -102,6 +105,107 @@ class _NikoHomePageState extends State<NikoHomePage> {
     } catch (_) {
       // Keep automatic language mode if preferences cannot be read.
     }
+  }
+
+  Future<void> _openImageStudio() async {
+    final promptController = TextEditingController();
+    Uint8List? generatedImage;
+    bool generating = false;
+    String? errorMessage;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('استوديو صور NIKO'),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'اكتب وصف الصورة بالتفصيل. اختر الجودة العالية للحصول على أفضل نتيجة متاحة.',
+                    style: TextStyle(fontSize: 13, height: 1.5),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: promptController,
+                    minLines: 3,
+                    maxLines: 6,
+                    decoration: const InputDecoration(
+                      hintText: 'مثال: صورة إعلانية سينمائية لعباية سوداء فاخرة...',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 10),
+                    Text(errorMessage!, style: const TextStyle(color: Colors.redAccent)),
+                  ],
+                  if (generatedImage != null) ...[
+                    const SizedBox(height: 14),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.memory(
+                        generatedImage!,
+                        fit: BoxFit.contain,
+                        height: 260,
+                      ),
+                    ),
+                  ],
+                  if (generating) ...[
+                    const SizedBox(height: 16),
+                    const Center(child: CircularProgressIndicator()),
+                    const SizedBox(height: 6),
+                    const Text('نيكو ينشئ الصورة بجودة عالية...', textAlign: TextAlign.center),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: generating ? null : () => Navigator.pop(dialogContext),
+              child: const Text('إغلاق'),
+            ),
+            FilledButton.icon(
+              onPressed: generating
+                  ? null
+                  : () async {
+                      final prompt = promptController.text.trim();
+                      if (prompt.length < 3) {
+                        setDialogState(() => errorMessage = 'اكتب وصفاً أوضح للصورة.');
+                        return;
+                      }
+                      setDialogState(() {
+                        generating = true;
+                        errorMessage = null;
+                        generatedImage = null;
+                      });
+                      try {
+                        final result = await _imageService.generate(prompt: prompt);
+                        if (!dialogContext.mounted) return;
+                        setDialogState(() {
+                          generatedImage = result;
+                          generating = false;
+                        });
+                      } catch (error) {
+                        if (!dialogContext.mounted) return;
+                        setDialogState(() {
+                          errorMessage = error.toString();
+                          generating = false;
+                        });
+                      }
+                    },
+              icon: const Icon(Icons.auto_awesome),
+              label: const Text('إنشاء الصورة'),
+            ),
+          ],
+        ),
+      ),
+    );
+    promptController.dispose();
   }
 
   Future<void> _showSettings() async {
@@ -225,6 +329,7 @@ class _NikoHomePageState extends State<NikoHomePage> {
   void dispose() {
     _speech.cancel();
     _chatService.close();
+    _imageService.close();
     _speechOutput.stop();
     _messageController.dispose();
     _scrollController.dispose();
@@ -456,6 +561,11 @@ class _NikoHomePageState extends State<NikoHomePage> {
                 ),
               ],
             ),
+          ),
+          IconButton(
+            onPressed: _openImageStudio,
+            icon: const Icon(Icons.image_search_rounded, color: Color(0xFF78DCCB)),
+            tooltip: 'استوديو إنشاء الصور',
           ),
           IconButton(
             onPressed: _clearConversation,

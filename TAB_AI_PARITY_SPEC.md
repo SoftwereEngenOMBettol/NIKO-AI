@@ -1,0 +1,126 @@
+# NIKO AI — مواصفات التكافؤ مع Tab AI
+
+**الهدف:** تحويل NIKO من واجهة محادثة أولية إلى مساعد شخصي متعدد الوسائط والمهارات، يقترب وظيفياً من Tab AI ويُبنى على iPhone أولاً مع إبقاء Android من قاعدة Flutter المشتركة.
+
+هذه الوثيقة هي مرجع قبول المنتج. وجود واجهة أو endpoint وحده لا يعني أن الميزة مكتملة؛ لا تُعلّم أي ميزة بأنها جاهزة قبل تنفيذها واختبارها end-to-end.
+
+## 1. تجربة المساعد
+
+- يتلقى النص والصوت والصور والملفات، ويستطيع إخراج نص وصوت وصور وملفات وفيديو عندما يكون مزود الوسائط مهيأً.
+- يحدد النية ويقسم الطلب المركب إلى مهام فرعية، ويختار المهارات المناسبة، ويراقب التنفيذ ويعيد نتيجة حقيقية.
+- يحتفظ بسياق المحادثة وذاكرة المستخدم وفق إعداداته، ويستأنف المهام التي يمكن استئنافها.
+- لا يطلب من المستخدم كتابة أوامر تقنية أو اختيار مزود لكل طلب؛ يستخدم موجّه قدرات تلقائياً، ويطلب توضيحاً فقط عند نقص معلومة أساسية.
+- يوضح ما نُفذ وما تعذر تنفيذه، ولا يختلق نتائج أو ملفات أو روابط.
+
+## 2. قدرات مطلوبة ومعايير القبول
+
+### A. الذكاء والمحادثة والذاكرة
+- العربية بلهجاتها، الإنجليزية، التركية، والمزج بينها داخل الرسالة.
+- الرد بلغة ولهجة المستخدم تلقائياً مع إمكانية تغيير التفضيل.
+- سجل محادثة مستمر وذاكرة قابلة للمراجعة والتعديل والحذف والتعطيل.
+- تخطيط المهام متعددة الخطوات مع حالة لكل خطوة، إعادة المحاولة الآمنة، وإلغاء المهمة.
+- سياق متعدد الوسائط: ربط الصور والملفات والنتائج بالمحادثة مع صلاحيات وصول معزولة لكل مستخدم.
+
+**القبول:** اختبارات محادثة عربية/إنجليزية/تركية ولهجات وجمل مختلطة؛ واختبارات استعادة السياق بعد إغلاق التطبيق وإعادة فتحه.
+
+### B. الصور
+- توليد صور من النص، وتحرير صورة يرفعها المستخدم، وتغيير الخلفية/إزالتها، وإنتاج تصاميم ومواد تسويقية.
+- حفظ الصورة بجودة الملف الأصلي المتاحة، مع معاينة ومشاركة وحفظ.
+- اختيار مزود عبر طبقة موحدة، دون ربط التطبيق بمزود واحد.
+- لا تُعرض الميزة كمتاحة حتى يكون مزود فعلي مُهيأ بمفتاح آمن واختبار توليد حقيقي.
+
+**القبول:** طلب نصي ينتج صورة قابلة للعرض والتنزيل، وتحرير صورة مدخلة، ومعالجة أخطاء المزود وحدود الاستخدام.
+
+### C. الفيديو
+- إنشاء فيديو من وصف نصي أو صور مرجعية، وتحريك صورة، وتوليد مقاطع ومشاهد، وتجميع عدة مقاطع.
+- تحرير أساسي: قص/دمج، نصوص وترجمة، صوت وموسيقى يملك المستخدم حق استخدامها.
+- تحديد الجودة والمدة والأبعاد بحسب ما يدعمه المزود؛ عدم الوعد بجودة أو دقة غير متاحة.
+- تنفيذ التوليد غير المتزامن مع حالة تقدم، مهلة، استئناف، وإشعار عند الاكتمال.
+
+**القبول:** إنشاء مهمة فيديو فعلية، متابعة حالتها حتى الاكتمال، ثم إتاحة ملف MP4 صالح. لا تُعد واجهة تجريبية أو رابط وهمي نجاحاً.
+
+### D. المستندات والإنتاجية
+- إنشاء وقراءة وتحرير DOCX وPDF وXLSX وPPTX وTXT وCSV.
+- إعداد سيرة ذاتية ورسائل تقديم وتقارير وعروض وجداول وخطط.
+- قوالب عربية وإنجليزية، دعم RTL عند ملاءمة التنسيق، ومعاينة قبل التصدير.
+- استخراج بيانات CV من معلومات المستخدم دون اختلاق خبرات أو شهادات أو مهارات.
+- استيراد ملفات المستخدم وتلخيصها واستخراج البيانات منها، مع حدود حجم ونوع آمنة.
+
+**القبول:** اختبارات توليد لكل صيغة مدعومة، والتحقق من وجود الملف وصلاحيته وإمكانية فتحه؛ واختبارات عدم اختلاق معلومات السيرة الذاتية.
+
+### E. البحث والويب وتنفيذ المهام
+- بحث حديث عبر مصادر مسموح بها، تلخيص ومقارنة، وروابط للمصادر.
+- التخطيط لطلبات مثل البحث عن منتج، المقارنة، إعداد قائمة، وتجهيز عملية شراء.
+- تنفيذ المهام التي تسمح بها الواجهات الرسمية فقط.
+- عرض حالة المهمة والنتيجة والروابط، مع توضيح الخطوات التي تحتاج تدخلاً بشرياً.
+
+### F. WhatsApp والتواصل الاجتماعي والاتصال
+- دراسة تكامل WhatsApp Business Platform الرسمي واستقبال/إرسال الرسائل وفق سياسات Meta؛ لا نفترض أن تطبيقاً عادياً يستطيع قراءة محادثات WhatsApp الشخصية.
+- إعداد منشورات LinkedIn وInstagram وربط النشر فقط عبر APIs الرسمية والصلاحيات المعتمدة.
+- إعداد طلبات الطعام والملابس والحجوزات، ثم طلب موافقة صريحة قبل الدفع أو التأكيد.
+- المكالمات برقم مستقل/أجنبي تتطلب مزود اتصالات يدعم البلد ورقماً وتكلفة واضحة؛ لا تُعد متاحة قبل اختبار اتصال فعلي.
+
+## 3. الاستقلالية والموافقات
+
+- إجراءات داخلية منخفضة المخاطر: يمكن تنفيذها تلقائياً ضمن إعدادات المستخدم.
+- إرسال رسالة أو نشر محتوى أو مشاركة ملف: معاينة وموافقة قبل الإرسال.
+- شراء أو دفع أو حجز نهائي أو مكالمة مدفوعة أو حذف غير قابل للتراجع: تأكيد صريح قبل التنفيذ.
+- لا يطلب من المستخدم تنفيذ أوامر shell أو اختيار تفاصيل تقنية لكل مهمة.
+- يمكن إيقاف المهمة وإلغاء التكاملات ومراجعة سجل الإجراءات.
+
+## 4. البنية التقنية المطلوبة
+
+- Flutter: واجهة iPhone أولاً، ثم Android من قاعدة مشتركة.
+- Backend: FastAPI بوصفه واجهة موحدة للمحادثة والمهام والملفات والوسائط.
+- NIKO Orchestrator: تحليل النية، تخطيط المهام، اختيار المهارة، التنفيذ، وإدارة الموافقات.
+- Skill Registry: عقود موحدة للمهارات، مخططات مدخلات/مخرجات، صلاحيات، حدود وقت وتكلفة.
+- Provider Adapters: مزودات قابلة للاستبدال للنص والصوت والرؤية والصور والفيديو.
+- Job Queue: مهام طويلة وغير متزامنة، حالات واضحة، إعادة محاولة آمنة، واسترجاع الحالة.
+- File Service: تخزين آمن مؤقت/دائم، أنواع ملفات مسموحة، حدود حجم، روابط منتهية الصلاحية.
+- Memory Store: بيانات معزولة حسب المستخدم مع التصدير والحذف.
+- Observability: سجلات منظمة دون أسرار أو محتوى شخصي غير لازم، ومعرّف لكل مهمة.
+- لا توضع مفاتيح API أو رموز OAuth داخل تطبيق الهاتف أو GitHub؛ تُستخدم متغيرات بيئة وأسرار GitHub/استضافة الخادم.
+
+## 5. سياسة التكلفة والخصوصية
+
+- الهدف هو أقل تكلفة ممكنة، لكن لا نعد بتوليد صور/فيديو عالي الجودة أو مكالمات أو نشر غير محدود مجاناً.
+- كل مزود خارجي يحتاج توثيقاً للتكلفة والحدود ومكان معالجة البيانات وشروط الاستخدام.
+- لا تُفعّل خدمة مدفوعة أو اشتراك تلقائي دون موافقة صاحب المشروع.
+- البدائل المحلية تُستخدم حيث تحقق جودة وأداء مقبولين، مع توثيق احتياجات CPU/GPU والبطارية والتخزين.
+- حماية مفاتيح API، عزل المستخدمين، مصادقة، rate limits، والتحقق من نوع وحجم الملفات.
+- الالتزام بواجهات APIs الرسمية وشروط المنصات، دون scraping أو تجاوز قيود.
+
+## 6. خطة التنفيذ والبوابات
+
+1. **Foundation:** عقود المهارات، orchestrator، إدارة المهام، إعدادات المزودين، اختبارات backend وCI.
+2. **Documents:** إنشاء/قراءة الملفات والسيرة الذاتية والتقارير والعروض مع اختبارات فتح الملفات.
+3. **Media:** موصلات الصور ثم الفيديو، مع دعم jobs غير المتزامنة وتحقق من النتائج الفعلية.
+4. **Research & actions:** البحث، المتصفح/التكاملات الرسمية، وإدارة الموافقات.
+5. **Memory & voice:** الذاكرة المستمرة، الصوت متعدد اللغات، وتحسين اللهجات.
+6. **External integrations:** WhatsApp، LinkedIn، Instagram، التجارة والاتصالات بعد توافر الاعتمادات والموافقات.
+7. **iOS release:** واجهة متكاملة، أمان، اختبارات iPhone فعلية، توقيع وتوزيع. Android بعد استقرار iOS.
+
+كل مرحلة تُختبر وتُوثق في GitHub Actions. لا تُعلن الميزة جاهزة اعتماداً على وجود ملفات أو mock فقط.
+
+## 7. ما لا يمكن إتمامه من GitHub وحده
+
+يمكن بناء الكود والاختبارات والموصلات والتوثيق وCI داخل المستودع. لكن التشغيل الفعلي لبعض الخدمات يتطلب لاحقاً مفاتيح API أو حسابات مزودين أو موافقات OAuth أو رقم هاتف أو استضافة أو توقيع Apple. نجهز جميع نقاط الربط الآن، ونؤجل إدخال الأسرار والحسابات إلى مرحلة الإعداد النهائية. لا نضع بيانات اعتماد حقيقية في المستودع.
+
+
+## 8. Multi-user privacy, security and scale (mandatory release gate)
+
+NIKO is a multi-user product. Each account is a separate security boundary. A user must never access another user's conversations, memory, voice data, files, generated images/videos/documents, jobs, settings, integrations or billing records.
+
+- Authenticate every private API request. Validate token signature, issuer, audience, expiry and session state on the backend.
+- Derive user/tenant identity from the verified token on the server. Never trust a client-supplied user_id, tenant_id, owner_id, role or storage path.
+- Scope every database query, file operation, search, background job, export and deletion to the authenticated user. Use PostgreSQL constraints and Row-Level Security as defence in depth.
+- Keep object storage private. Issue short-lived signed URLs only after checking ownership. Validate file signature/type/size and isolate parsers and media workers.
+- Encrypt traffic with TLS and encrypt databases, backups and files at rest. Keep secrets in a server-side secret manager; never embed provider keys in Flutter or GitHub source.
+- Minimize collection and retention. Do not upload idle wake-word audio. Do not retain raw recordings by default. Do not use private content for model training without explicit informed opt-in.
+- Redact prompts, transcripts, files, tokens and personal information from logs. Provide account export, deletion, session revocation and retention controls.
+- Scale with stateless API instances, PostgreSQL, private object storage and a durable queue for long-running jobs. Apply per-user quotas, rate limits, concurrency limits, provider spend caps, bounded retries and backpressure.
+- "Many users" is a load-tested capacity goal, not an unlimited guarantee. Stage load tests (100/1,000/10,000 concurrent sessions) and publish measured limits before launch.
+
+**Mandatory tests:** two or more isolated users; IDOR attempts against every resource type; cross-tenant list/search/pagination/export/download/update/delete; worker retry isolation; pooled database connection/RLS leakage; revoked tokens; malicious uploads; and log/trace redaction.
+
+**Release gate:** no public multi-user release until authentication, authorization, tenant isolation, private storage, deletion/export, abuse controls, backup/restore, monitoring and independent security review pass. See [SECURITY_PRIVACY_MULTI_TENANT.md](docs/SECURITY_PRIVACY_MULTI_TENANT.md).

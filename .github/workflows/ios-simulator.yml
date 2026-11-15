@@ -1,15 +1,22 @@
-name: Build NIKO iOS Simulator
+name: Build NIKO iOS and Web Preview
 
 on:
   push:
+    branches: [main, "feat/**"]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/ios-simulator.yml"
+  pull_request:
     branches: [main]
     paths:
       - "mobile/**"
       - ".github/workflows/ios-simulator.yml"
   workflow_dispatch:
-
 permissions:
   contents: read
+
+env:
+  IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID || 'com.nikoai.niko' }}
 
 jobs:
   build-ios-simulator:
@@ -24,17 +31,18 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Generate iOS platform files
-        run: flutter create --platforms=ios --org com.nikoai --project-name niko_ai /tmp/niko_ios
+      # The current repository does not yet track mobile/ios. Generate a
+      # reproducible Flutter Runner scaffold for CI; this is not native wake-word code.
+      - name: Generate iOS Runner scaffold
+        run: |
+          flutter create --platforms=ios --org com.nikoai --project-name niko /tmp/niko_ios
+          cp -R /tmp/niko_ios/ios mobile/ios
 
-      - name: Add iOS platform to app
-        run: cp -R /tmp/niko_ios/ios mobile/ios
-
-      - name: Configure iOS app identity and speech permissions
+      - name: Configure app identity and privacy descriptions
         run: |
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName NIKO" mobile/ios/Runner/Info.plist
-          /usr/libexec/PlistBuddy -c "Add :NSSpeechRecognitionUsageDescription string NIKO uses speech recognition to turn your spoken words into message text." mobile/ios/Runner/Info.plist
-          /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string NIKO uses the microphone only when you tap the voice input button." mobile/ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSSpeechRecognitionUsageDescription string NIKO uses speech recognition when you explicitly start voice input." mobile/ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string NIKO uses the microphone only during a user-started voice session." mobile/ios/Runner/Info.plist
 
       - name: Install dependencies
         working-directory: mobile
@@ -57,5 +65,45 @@ jobs:
         with:
           name: niko-ai-ios-simulator
           path: mobile/build/ios/iphonesimulator/Runner.app
+          if-no-files-found: error
+          retention-days: 14
+
+  build-web-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Flutter web platform files
+        working-directory: mobile
+        run: flutter create --platforms=web .
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Analyze Dart code
+        working-directory: mobile
+        run: flutter analyze
+
+      - name: Run Flutter tests
+        working-directory: mobile
+        run: flutter test
+
+      - name: Build installable web preview
+        working-directory: mobile
+        run: flutter build web --release --base-href /NIKO-AI/
+
+      - name: Upload web preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: niko-ai-iphone-web-preview
+          path: mobile/build/web
           if-no-files-found: error
           retention-days: 14

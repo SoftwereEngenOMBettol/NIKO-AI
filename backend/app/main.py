@@ -1,15 +1,37 @@
 from __future__ import annotations
 
 import os
+from io import BytesIO
 from typing import Literal
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+
+from app.auth import AuthenticatedPrincipal, verify_access_token
+from app.capabilities import get_capabilities
+from app.document_service import generate_document
+from app.image_provider import ImageProviderError, OpenAIImageProvider
+from app.provider_policy import ProviderPolicy, ProviderPolicyError, ProviderPolicyGuard, ProviderRequest
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
-app = FastAPI(title="NIKO AI Local Engine", version="0.1.0")
+app = FastAPI(title="NIKO AI Engine", version="0.2.0")
+
+# External image generation is a potentially billable action. It stays disabled
+# unless an operator explicitly opts in on the backend environment.
+IMAGE_PROVIDER_ENABLED = os.getenv("NIKO_IMAGE_PROVIDER_ENABLED", "false").strip().lower() == "true"
+try:
+    IMAGE_PROVIDER_MAX_CONCURRENT = max(1, int(os.getenv("NIKO_IMAGE_MAX_CONCURRENT", "1")))
+except ValueError:
+    IMAGE_PROVIDER_MAX_CONCURRENT = 1
+IMAGE_PROVIDER_GUARD = ProviderPolicyGuard({
+    "openai_images": ProviderPolicy(
+        enabled=IMAGE_PROVIDER_ENABLED,
+        max_concurrent=IMAGE_PROVIDER_MAX_CONCURRENT,
+    )
+})
 
 
 class ChatRequest(BaseModel):
@@ -22,6 +44,19 @@ class ChatResponse(BaseModel):
     language: str
     provider: str
     model: str
+
+
+class DocumentSection(BaseModel):
+    heading: str = Field(default="", max_length=160)
+    text: str = Field(default="", max_length=20000)
+
+
+class DocumentRequest(BaseModel):
+    format: Literal["docx", "xlsx", "pptx", "txt", "csv"]
+    title: str = Field(min_length=1, max_length=160)
+    content: str = Field(default="", max_length=20000)
+    sections: list[DocumentSection] = Field(default_factory=list, max_length=100)
+    rows: list[list[str]] = Field(default_factory=list, max_length=5000)
 
 
 SYSTEM_PROMPT = """أنت نيكو، مساعد شخصي ذكي وودود. تحدث كإنسان طبيعي، لا كروبوت.
@@ -82,8 +117,123 @@ async def health() -> dict[str, str | bool]:
         }
 
 
+@app.get("/v1/session")
+async def session(
+    principal: AuthenticatedPrincipal = Depends(verify_access_token),
+) -> dict[str, str]:
+    """Return only the identity derived from a verified server-side token."""
+    return {"issuer": principal.issuer, "subject": principal.subject}
+
+
+@app.get("/v1/capabilities")
+async def capabilities() -> dict:
+    """Return truthful runtime feature availability for the client."""
+    return get_capabilities()
+
+
+@app.post("/v1/documents")
+async def create_document(
+    request: DocumentRequest,
+    _principal: AuthenticatedPrincipal = Depends(verify_access_token),
+) -> StreamingResponse:
+    """Generate a structured Office/text document and return the actual file bytes."""
+    try:
+        data, mime_type, filename = generate_document(
+            file_format=request.format,
+            title=request.title,
+            content=request.content,
+            sections=[section.model_dump() for section in request.sections],
+            rows=request.rows,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return StreamingResponse(
+        BytesIO(data),
+        media_type=mime_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+IMAGE_MAX_BYTES = 15 * 1024 * 1024
+IMAGE_SIZES = {"1024x1024", "1024x1536", "1536x1024"}
+
+
+@app.post("/v1/images/generations")
+async def generate_image(
+    prompt: str = Form(min_length=3, max_length=4000),
+    size: str = Form(default="1024x1024"),
+    quality: Literal["low", "medium", "high"] = Form(default="high"),
+    _principal: AuthenticatedPrincipal = Depends(verify_access_token),
+) -> StreamingResponse:
+    """Generate a high-quality image using the configured backend provider."""
+    if size not in IMAGE_SIZES:
+        raise HTTPException(status_code=422, detail="Unsupported image size.")
+    try:
+        IMAGE_PROVIDER_GUARD.acquire(ProviderRequest("openai_images"))
+    except ProviderPolicyError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        provider = OpenAIImageProvider()
+        result = await provider.generate(prompt=prompt, size=size, quality=quality)
+    except ImageProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    finally:
+        IMAGE_PROVIDER_GUARD.release("openai_images")
+    return StreamingResponse(
+        BytesIO(result.content),
+        media_type=result.mime_type,
+        headers={"Content-Disposition": 'inline; filename="niko-generated.png"',
+                 "X-Niko-Image-Model": result.model},
+    )
+
+
+@app.post("/v1/images/edits")
+async def edit_image(
+    prompt: str = Form(min_length=3, max_length=4000),
+    size: str = Form(default="1024x1024"),
+    quality: Literal["low", "medium", "high"] = Form(default="high"),
+    image: UploadFile = File(...),
+    _principal: AuthenticatedPrincipal = Depends(verify_access_token),
+) -> StreamingResponse:
+    """Edit a user-provided image; original upload is held in memory only."""
+    if size not in IMAGE_SIZES:
+        raise HTTPException(status_code=422, detail="Unsupported image size.")
+    if image.content_type not in {"image/png", "image/jpeg", "image/webp"}:
+        raise HTTPException(status_code=415, detail="Upload a PNG, JPEG, or WebP image.")
+    content = await image.read(IMAGE_MAX_BYTES + 1)
+    if not content or len(content) > IMAGE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Image must be between 1 byte and 15 MB.")
+    try:
+        IMAGE_PROVIDER_GUARD.acquire(ProviderRequest("openai_images"))
+    except ProviderPolicyError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        provider = OpenAIImageProvider()
+        result = await provider.edit(
+            prompt=prompt,
+            image_bytes=content,
+            filename=image.filename or "source.png",
+            mime_type=image.content_type,
+            size=size,
+            quality=quality,
+        )
+    except ImageProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    finally:
+        IMAGE_PROVIDER_GUARD.release("openai_images")
+    return StreamingResponse(
+        BytesIO(result.content),
+        media_type=result.mime_type,
+        headers={"Content-Disposition": 'inline; filename="niko-edited.png"',
+                 "X-Niko-Image-Model": result.model},
+    )
+
+
 @app.post("/v1/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
+async def chat(
+    request: ChatRequest,
+    _principal: AuthenticatedPrincipal = Depends(verify_access_token),
+) -> ChatResponse:
     payload = {
         "model": OLLAMA_MODEL,
         "stream": False,

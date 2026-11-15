@@ -13,19 +13,38 @@ class NikoChatException implements Exception {
   String toString() => message;
 }
 
-/// Connects the app to the local NIKO API. Configure the URL with a dart-define.
+/// Connects to the authenticated NIKO API. Configure an HTTPS URL with dart-define.
 class NikoApiChatService implements NikoChatService {
   NikoApiChatService({String? baseUrl, http.Client? client})
       : _baseUrl = (baseUrl ??
                 const String.fromEnvironment(
                   'NIKO_API_BASE_URL',
-                  defaultValue: 'http://10.0.2.2:8000',
+                  defaultValue: '',
                 ))
             .replaceFirst(RegExp(r'/+$'), ''),
         _client = client ?? http.Client();
 
   final String _baseUrl;
   final http.Client _client;
+
+  Uri _endpoint(String path) {
+    if (_baseUrl.isEmpty) {
+      throw const NikoChatException(
+        'لم يتم إعداد عنوان خادم NIKO. يجب ضبط NIKO_API_BASE_URL على عنوان HTTPS الخاص بالخادم.',
+      );
+    }
+    final uri = Uri.tryParse('$_baseUrl$path');
+    if (uri == null ||
+        !uri.hasAuthority ||
+        (uri.scheme != 'https' &&
+            !(uri.scheme == 'http' &&
+                (uri.host == 'localhost' || uri.host == '127.0.0.1')))) {
+      throw const NikoChatException(
+        'عنوان خادم NIKO غير صالح. استخدم HTTPS للخادم البعيد.',
+      );
+    }
+    return uri;
+  }
 
   @override
   Future<String> createReply({
@@ -35,7 +54,7 @@ class NikoApiChatService implements NikoChatService {
     try {
       final response = await _client
           .post(
-            Uri.parse('$_baseUrl/v1/chat'),
+            _endpoint('/v1/chat'),
             headers: const {'Content-Type': 'application/json'},
             body: jsonEncode({
               'message': userMessage,
@@ -65,7 +84,7 @@ class NikoApiChatService implements NikoChatService {
       );
     } on http.ClientException {
       throw const NikoChatException(
-        'تعذر الاتصال بعقل نيكو. تأكد من تشغيل الخادم على الكمبيوتر وأن الجهازين على الشبكة نفسها.',
+        'تعذر الاتصال بخادم NIKO. تحقق من اتصال الإنترنت وحالة الخدمة.',
       );
     } on FormatException {
       throw const NikoChatException('وصل رد غير مفهوم من خادم نيكو.');
