@@ -14,7 +14,7 @@
 ```powershell
 cd backend
 py -3 -m venv .venv
-.\\.venv\\Scripts\\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 ```
 
@@ -31,7 +31,7 @@ ollama run qwen2.5:3b
 
 ```powershell
 cd backend
-.\\.venv\\Scripts\\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
