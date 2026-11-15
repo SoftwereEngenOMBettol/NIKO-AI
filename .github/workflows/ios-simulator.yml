@@ -176,7 +176,7 @@ jobs:
               config_pos = source.find(config_marker)
               config_end = source.find("\n\t\t};", config_pos)
               block = source[config_pos:config_end]
-              settings_match = re.search(r"(buildSettings = \{)(.*?)(\n\t\t\t\t\};)", block, re.S)
+              settings_match = re.search(r"(buildSettings = \{)(.*?)(\n\s*\};)", block, re.S)
               if not settings_match:
                   raise SystemExit(f"buildSettings not found for {config_id}")
               settings = settings_match.group(2)
