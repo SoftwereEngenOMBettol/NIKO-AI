@@ -40,7 +40,7 @@ class TenantDatabase:
                     # This function can only read/write the restricted identity map.
                     # The app role has EXECUTE permission, not direct table access.
                     cur.execute(
-                        "SELECT public.niko_resolve_user_id(%s, %s)",
+                        "SELECT niko_private.niko_resolve_user_id(%s, %s)",
                         (principal.issuer, principal.subject),
                     )
                     row = cur.fetchone()
