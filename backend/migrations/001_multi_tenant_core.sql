@@ -78,14 +78,49 @@ CREATE TABLE IF NOT EXISTS niko_jobs (
 CREATE INDEX IF NOT EXISTS idx_niko_jobs_owner_status_created
     ON niko_jobs(owner_id, status, created_at DESC);
 
--- Tenant isolation policies. The request/worker layer must SET LOCAL app.user_id
--- from a verified principal inside every transaction. Missing or malformed context
--- returns NULL (fail closed) instead of raising a cast error.
+-- Restricted identity bootstrap. The application role cannot read or write this
+-- mapping table directly; it can only execute niko_resolve_user_id().
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'niko_identity_resolver') THEN
+        CREATE ROLE niko_identity_resolver NOLOGIN NOSUPERUSER NOBYPASSRLS;
+    END IF;
+END
+$$;
+
+CREATE TABLE IF NOT EXISTS niko_identity_map (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    identity_issuer TEXT NOT NULL,
+    identity_subject TEXT NOT NULL,
+    UNIQUE (identity_issuer, identity_subject)
+);
+
+REVOKE ALL ON TABLE niko_identity_map FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO niko_identity_resolver;
+GRANT SELECT, INSERT, UPDATE ON TABLE niko_identity_map TO niko_identity_resolver;
+
+CREATE OR REPLACE FUNCTION niko_resolve_user_id(p_issuer TEXT, p_subject TEXT)
+RETURNS UUID
+LANGUAGE SQL
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+    INSERT INTO public.niko_identity_map (identity_issuer, identity_subject)
+    VALUES (p_issuer, p_subject)
+    ON CONFLICT (identity_issuer, identity_subject)
+    DO UPDATE SET identity_subject = EXCLUDED.identity_subject
+    RETURNING id;
+$$;
+
+ALTER FUNCTION niko_resolve_user_id(TEXT, TEXT) OWNER TO niko_identity_resolver;
+REVOKE ALL ON FUNCTION niko_resolve_user_id(TEXT, TEXT) FROM PUBLIC;
+
+-- Tenant isolation policies. Missing or malformed transaction context returns NULL.
 CREATE OR REPLACE FUNCTION niko_current_user_id()
 RETURNS UUID
 LANGUAGE plpgsql
 STABLE
-AS $
+AS $$
 DECLARE
     raw_user_id TEXT;
 BEGIN
@@ -97,9 +132,9 @@ BEGIN
 EXCEPTION WHEN invalid_text_representation THEN
     RETURN NULL;
 END;
-$;
+$$;
 
-DO $
+DO $$
 DECLARE
     table_name TEXT;
 BEGIN
@@ -113,16 +148,14 @@ BEGIN
     LOOP
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', table_name);
         EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', table_name);
-        EXECUTE format(
-            'DROP POLICY IF EXISTS tenant_isolation ON %I',
-            table_name
-        );
+        EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', table_name);
         EXECUTE format(
             'CREATE POLICY tenant_isolation ON %I USING (owner_id = niko_current_user_id()) WITH CHECK (owner_id = niko_current_user_id())',
             table_name
         );
     END LOOP;
-END $$;
+END
+$$;
 
 ALTER TABLE niko_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE niko_users FORCE ROW LEVEL SECURITY;
@@ -131,5 +164,5 @@ CREATE POLICY user_self_access ON niko_users
     USING (id = niko_current_user_id())
     WITH CHECK (id = niko_current_user_id());
 
--- Production deployment must grant only required table/sequence privileges to a
--- non-superuser application role and must test RLS with the exact pooled role.
+-- Grant EXECUTE on niko_resolve_user_id(TEXT, TEXT) to the backend application
+-- role during deployment. Do not grant direct access to niko_identity_map.
