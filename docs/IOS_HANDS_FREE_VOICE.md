@@ -1,34 +1,48 @@
-# NIKO hands-free voice on iPhone
+# NIKO direct hands-free voice on iPhone (no Siri)
 
-## Product requirement
+## Product decision
 
-NIKO must not feel like a WhatsApp-style chat app. The primary experience is a voice-first personal assistant that the user can invoke while the phone is nearby without navigating into the chat screen. The user explicitly wants to call to NIKO from a distance.
+The product must be invoked as **NIKO**, not through Siri. Siri, App Intents, App Shortcuts and Siri handoff are explicitly out of scope. The primary experience is a voice-first personal assistant, not a WhatsApp-style chat screen.
 
-## iOS platform constraint (important)
+The agreed user flow is:
+1. The user opens NIKO and explicitly starts a clearly visible listening session.
+2. The user may leave NIKO, lock the phone, or use other apps.
+3. While iOS continues to grant the app its permitted background audio execution, a local wake-word detector listens for "NIKO".
+4. On detection, NIKO captures the command, sends only the required audio/text to the authenticated NIKO service, and speaks the response.
+5. The user can stop listening immediately from NIKO; the active microphone state must be clearly indicated.
 
-A third-party iOS app cannot freely run a hidden, always-on custom wake-word detector in the background like a dedicated smart speaker. iOS controls background execution and microphone access; continuous background listening is restricted, drains battery, and requires visible system microphone permission/indicators. We must not promise a custom always-listening "NIKO" hotword until Apple platform policy and an approved implementation path support it.
+## Platform feasibility and non-negotiable limits
 
-## Supported implementation path
+iOS does not provide ordinary third-party apps with unrestricted, permanent background execution or a general-purpose custom hotword entitlement. A user-started audio session and the audio background mode may allow some continued audio processing while the app is backgrounded, but this is conditional: iOS can interrupt or suspend the app, calls and other audio sessions can take priority, battery impact must be managed, and App Review may reject misuse of background audio.
 
-1. **Siri / App Intents first:** expose a NIKO voice action using Apple's App Intents and App Shortcuts. The user can invoke it through Siri (for example, "Hey Siri, ask NIKO ...") without manually opening the NIKO interface first, subject to the iOS version and Siri language/region support.
-2. **Handoff into NIKO voice session:** the App Intent passes the recognized request to the app/service, starts a voice interaction, and returns a spoken response using the system speech output where allowed.
-3. **Foreground voice session:** while NIKO is active, support continuous turn-taking with clear start/stop controls, interruption handling, and a visible microphone state.
-4. **Lock-screen entry points:** evaluate supported Shortcuts, Action Button, widgets and notifications as quick launch paths. These are entry points, not hidden always-on listening.
-5. **Fallback:** if Siri/App Intents are unavailable or a user has disabled Siri, provide a clearly labeled manual voice button.
+Therefore:
+- Never claim guaranteed wake-word availability after force-quit, reboot, OS suspension, or an audio-session interruption.
+- Do not disguise a wake-word listener as music playback or use background audio mode solely to evade platform rules.
+- Investigate Apple's current background-audio rules and App Review requirements before implementation.
+- Prefer on-device wake-word detection so idle microphone audio is not streamed to the backend.
+- Keep the microphone permission, active listening state, stop control, privacy explanation, and interruption/recovery behaviour explicit.
+- If iOS does not permit the required background listening behaviour for the intended app use, report the limitation and present a truthful fallback rather than shipping a covert or policy-violating workaround.
 
-## Acceptance criteria
+## Native iOS implementation plan
 
-- The user can invoke a NIKO action through Siri without first navigating to the NIKO chat screen.
-- A recognized spoken request is passed to the NIKO backend and the reply is spoken back.
-- Permission denial, offline state, unsupported Siri locale and backend failure have understandable spoken/visible fallbacks.
-- Microphone use is explicit, visible and stoppable; no covert recording.
-- The feature works on a physical iPhone and is tested against supported iOS versions, not just a simulator.
-- App Intents and App Shortcuts are integrated into the actual Xcode target and signed app. A Swift source file not included in the Xcode target does not count as implementation.
+1. Add and track the real Flutter iOS Runner/Xcode project; do not create orphan Swift files.
+2. Build a Swift native audio-session manager with explicit start/stop lifecycle and interruption handling.
+3. Evaluate a maintained on-device wake-word engine that supports custom "NIKO" models and iOS deployment. Document licensing, model size, CPU/battery use, false-accept and false-reject rates.
+4. Bridge wake events and audio capture to Flutter using a typed platform channel.
+5. Implement authenticated, short-lived voice requests; do not stream idle audio to the server.
+6. Use a speech provider abstraction for transcription and spoken replies, with Arabic dialect, English and Turkish support.
+7. Add macOS CI for iOS simulator build and unit tests; physical-device testing remains mandatory.
 
-## Deferred until the iOS project target exists
+## Acceptance tests
 
-The current repository's mobile source is Flutter and does not yet contain a tracked mobile/ios/Runner Xcode project. Therefore, do not add orphan Swift files and claim Siri integration. First generate/commit the iOS Runner project, then implement an App Intents extension/target (or an app-integrated AppIntent where supported), URL/deep-link or shared-container handoff, entitlements, usage descriptions, and macOS CI.
+- Start listening from NIKO after explicit microphone permission.
+- Switch to other apps and verify whether the session continues under supported iOS conditions.
+- Lock the screen and measure wake-word detection reliability, response latency and battery drain.
+- Verify no idle microphone audio is uploaded.
+- Verify stop control, permission denial, incoming call, audio interruption, network loss, app suspension and force-quit behaviour.
+- Verify the spoken response belongs to the signed-in user and cannot expose another user's content.
+- Test on supported physical iPhone models and iOS versions; simulator-only success is insufficient.
 
 ## Privacy
 
-Do not record or stream microphone audio continuously in the background. Process audio only after a user-initiated Siri action or while a clearly visible active voice session is running. Never store raw audio unless the user explicitly enables a feature that needs it.
+Raw wake-word processing should remain on device. Capture and upload a command only after local wake-word detection and according to the user's explicit settings. Do not persist raw voice recordings by default. Redact tokens, prompts, transcripts and personal content from operational logs.
