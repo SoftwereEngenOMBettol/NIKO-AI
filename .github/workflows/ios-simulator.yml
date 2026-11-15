@@ -1,4 +1,4 @@
-name: Build NIKO iOS Simulator
+name: Build NIKO iOS
 
 on:
   push:
@@ -12,9 +12,18 @@ on:
       - "mobile/**"
       - ".github/workflows/ios-simulator.yml"
   workflow_dispatch:
+    inputs:
+      upload_testflight:
+        description: "Upload the signed IPA to TestFlight (requires Apple signing and App Store Connect secrets)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
+
+env:
+  IOS_BUNDLE_ID: com.nikoai.niko
 
 jobs:
   build-ios-simulator:
@@ -29,18 +38,17 @@ jobs:
           channel: stable
           cache: true
 
-      # This generated scaffold is CI-only. Native iOS implementation must be
-      # committed to mobile/ios before it can be considered part of the app.
-      - name: Generate temporary iOS scaffold
-        run: flutter create --platforms=ios --org com.nikoai --project-name niko_ai /tmp/niko_ios
+      # The current repository does not yet track mobile/ios. Generate a
+      # reproducible Flutter Runner scaffold for CI; this is not native wake-word code.
+      - name: Generate iOS Runner scaffold
+        run: |
+          flutter create --platforms=ios --org com.nikoai --project-name niko /tmp/niko_ios
+          cp -R /tmp/niko_ios/ios mobile/ios
 
-      - name: Add iOS platform to app
-        run: cp -R /tmp/niko_ios/ios mobile/ios
-
-      - name: Configure iOS app identity and permissions
+      - name: Configure app identity and privacy descriptions
         run: |
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName NIKO" mobile/ios/Runner/Info.plist
-          /usr/libexec/PlistBuddy -c "Add :NSSpeechRecognitionUsageDescription string NIKO uses speech recognition when the user explicitly starts voice input." mobile/ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSSpeechRecognitionUsageDescription string NIKO uses speech recognition when you explicitly start voice input." mobile/ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string NIKO uses the microphone only during a user-started voice session." mobile/ios/Runner/Info.plist
 
       - name: Install dependencies
@@ -66,3 +74,170 @@ jobs:
           path: mobile/build/ios/iphonesimulator/Runner.app
           if-no-files-found: error
           retention-days: 14
+
+  build-signed-ipa:
+    if: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 != '' && secrets.IOS_CERTIFICATE_PASSWORD != '' && secrets.IOS_PROVISIONING_PROFILE_BASE64 != '' && secrets.IOS_TEAM_ID != '' && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' && secrets.ASC_PRIVATE_KEY != '' }}
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate iOS Runner scaffold
+        run: |
+          flutter create --platforms=ios --org com.nikoai --project-name niko /tmp/niko_ios
+          cp -R /tmp/niko_ios/ios mobile/ios
+
+      - name: Configure app identity and privacy descriptions
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName NIKO" mobile/ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSSpeechRecognitionUsageDescription string NIKO uses speech recognition when you explicitly start voice input." mobile/ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string NIKO uses the microphone only during a user-started voice session." mobile/ios/Runner/Info.plist
+
+      - name: Install Flutter dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Install Apple signing certificate and provisioning profile
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/niko_distribution.p12"
+          PROFILE_PATH="$RUNNER_TEMP/niko.mobileprovision"
+          KEYCHAIN_PATH="$RUNNER_TEMP/niko-signing.keychain-db"
+          printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+          printf '%s' "$PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          security cms -D -i "$PROFILE_PATH" > "$RUNNER_TEMP/niko-profile.plist"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/niko-profile.plist")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/niko-profile.plist")
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          echo "NIKO_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+
+      - name: Configure Xcode project for manual App Store signing
+        env:
+          TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          project = Path("mobile/ios/Runner.xcodeproj/project.pbxproj")
+          source = project.read_text()
+          bundle = os.environ["IOS_BUNDLE_ID"]
+          team = os.environ["TEAM_ID"]
+          profile = os.environ["NIKO_PROFILE_NAME"]
+
+          # Update bundle identifiers for Runner and its test target.
+          def bundle_id(match):
+              old = match.group(1)
+              suffix = ".RunnerTests" if "RunnerTests" in old else ""
+              return f"PRODUCT_BUNDLE_IDENTIFIER = {bundle}{suffix};"
+          source = re.sub(r"PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);", bundle_id, source)
+
+          # Locate the Runner target's build configuration list, then update
+          # only its Debug/Profile/Release configurations (not RunnerTests).
+          target = re.search(
+              r"[A-F0-9]{24} /\\* Runner \\*/ = \\{.*?buildConfigurationList = ([A-F0-9]{24})",
+              source, re.S
+          )
+          if not target:
+              raise SystemExit("Could not locate Runner build configuration list")
+          list_id = target.group(1)
+          list_block = re.search(
+              rf"{list_id} /\\*.*?\\*/ = \\{{.*?buildConfigurations = \\( (.*?) \\);",
+              source, re.S
+          )
+          if not list_block:
+              raise SystemExit("Could not locate Runner build configurations")
+          config_ids = re.findall(r"([A-F0-9]{24})", list_block.group(1))
+          if not config_ids:
+              raise SystemExit("Runner build configuration list is empty")
+
+          for config_id in config_ids:
+              pattern = rf"({config_id} /\\*.*?\\*/ = \\{{.*?buildSettings = \\{{)(.*?)(\\n\\s*\\}};)"
+              match = re.search(pattern, source, re.S)
+              if not match:
+                  raise SystemExit(f"Could not patch Runner configuration {config_id}")
+              settings = match.group(2)
+              settings = re.sub(r"CODE_SIGN_STYLE = [^;]+;", "CODE_SIGN_STYLE = Manual;", settings)
+              settings = re.sub(r"DEVELOPMENT_TEAM = [^;]*;", "", settings)
+              settings = re.sub(r"PROVISIONING_PROFILE_SPECIFIER = [^;]*;", "", settings)
+              settings += (
+                  f"\\n\\t\\t\\t\\tCODE_SIGN_STYLE = Manual;"
+                  f"\\n\\t\\t\\t\\tCODE_SIGN_IDENTITY = \\"Apple Distribution\\";"
+                  f"\\n\\t\\t\\t\\tDEVELOPMENT_TEAM = {team};"
+                  f"\\n\\t\\t\\t\\tPROVISIONING_PROFILE_SPECIFIER = \\"{profile}\\";"
+              )
+              source = source[:match.start(2)] + settings + source[match.end(2):]
+
+          project.write_text(source)
+          PY
+
+      - name: Create App Store export options
+        env:
+          TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>destination</key><string>upload</string>
+            <key>method</key><string>app-store-connect</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>provisioningProfiles</key><dict>
+              <key>$IOS_BUNDLE_ID</key><string>$NIKO_PROFILE_NAME</string>
+            </dict>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+
+      - name: Build signed IPA
+        working-directory: mobile
+        run: flutter build ipa --release --export-options-plist "$RUNNER_TEMP/ExportOptions.plist"
+
+      - name: Upload signed IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: niko-ai-ios-ipa
+          path: mobile/build/ios/ipa/*.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload to TestFlight
+        if: ${{ inputs.upload_testflight == true }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          printf '%s' "$ASC_PRIVATE_KEY" > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
+          IPA_PATH=$(find mobile/build/ios/ipa -maxdepth 1 -name '*.ipa' -print -quit)
+          test -n "$IPA_PATH"
+          xcrun altool --upload-app --type ios --file "$IPA_PATH" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Clean up signing material
+        if: ${{ always() }}
+        run: |
+          security delete-keychain "$RUNNER_TEMP/niko-signing.keychain-db" || true
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/"*.mobileprovision
+          rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_"*.p8
