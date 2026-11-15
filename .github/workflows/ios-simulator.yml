@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 env:
-  IOS_BUNDLE_ID: com.nikoai.niko
+  IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID || 'com.nikoai.niko' }}
 
 jobs:
   build-ios-simulator:
@@ -152,16 +152,13 @@ jobs:
           source = re.sub(r"PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);", replace_bundle, source)
 
           # Find the PBXNativeTarget named Runner and its three build configurations.
-          marker = "/* Runner */ = {"
-          target_pos = source.find(marker)
-          if target_pos < 0:
-              raise SystemExit("Runner target not found in project.pbxproj")
-          target_start = source.rfind("\n", 0, target_pos)
-          target_block = source[target_start:source.find("\n\t\t};", target_pos)]
-          config_match = re.search(r"buildConfigurationList = ([A-F0-9]{24})", target_block)
-          if not config_match:
-              raise SystemExit("Runner build configuration list not found")
-          list_id = config_match.group(1)
+          target_match = re.search(
+              r"[A-F0-9]{24} /\\* Runner \\*/ = \\{\\s*isa = PBXNativeTarget;.*?buildConfigurationList = ([A-F0-9]{24})",
+              source, re.S
+          )
+          if not target_match:
+              raise SystemExit("Runner native target or build configuration list not found")
+          list_id = target_match.group(1)
           list_marker = list_id + " /*"
           list_pos = source.find(list_marker)
           list_end = source.find("\n\t\t};", list_pos)
