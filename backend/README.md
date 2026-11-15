@@ -1,11 +1,11 @@
 # NIKO Local AI Backend
 
-خادم محلي يربط تطبيق NIKO بنموذج لغوي يعمل على كمبيوتر المستخدم عبر Ollama. لا يحتاج إلى مفتاح API أو اشتراك مدفوع، لكنه يتطلب تنزيل نموذج وقد يكون أبطأ على CPU.
+خادم محلي يربط تطبيق NIKO بنموذج لغوي يعمل على كمبيوتر المستخدم عبر Ollama. لا يحتاج الاستدلال المحلي إلى مفتاح API أو اشتراك مدفوع، لكنه يتطلب تنزيل نموذج وقد يكون أبطأ على CPU.
 
 ## المتطلبات
 - Python 3.11 أو أحدث.
 - Ollama مثبت ويعمل.
-- النموذج الافتراضي: `qwen2.5:3b`، ونحتاج إلى اختبار جودة اللهجات عملياً.
+- النموذج الافتراضي: `qwen2.5:3b`، وجودة اللهجات تحتاج إلى تقييم عملي.
 
 ## تشغيله على Windows
 
@@ -14,7 +14,7 @@
 ```powershell
 cd backend
 py -3 -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.\\.venv\\Scripts\\Activate.ps1
 python -m pip install -r requirements.txt
 ```
 
@@ -25,44 +25,43 @@ ollama pull qwen2.5:3b
 ollama run qwen2.5:3b
 ```
 
-بعد ظهور رد من النموذج يمكنك إنهاء جلسة المحادثة؛ إذا لم يعمل Ollama في الخلفية شغّل `ollama serve` في نافذة مستقلة.
+بعد التأكد من تنزيل النموذج، شغّل Ollama في الخلفية (عادةً يعمل تلقائياً على Windows، أو استخدم `ollama serve`).
 
 في نافذة PowerShell أخرى:
 
 ```powershell
 cd backend
-.\.venv\Scripts\Activate.ps1
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+.\\.venv\\Scripts\\Activate.ps1
+uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-تحقق من `http://127.0.0.1:8000/health`. يجب أن تكون `model_available: true`.
+تحقق من `http://127.0.0.1:8000/health`.
 
-## اختبار المحرك مباشرة
+## المصادقة والأمان
 
-```powershell
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/v1/chat -ContentType "application/json" -Body '{"message":"هلا نيكو، وش عاصمة عُمان؟","language":"automatic"}'
-```
+- `GET /health` و`GET /v1/capabilities` لا يتطلبان هوية.
+- `GET /v1/session` و`POST /v1/chat` و`POST /v1/documents` وواجهات الصور تتطلب `Authorization: Bearer <JWT>`.
+- الخادم يتحقق من توقيع HS256 ومن `iss` و`sub` و`iat` و`exp`. عند ضبط audience، يتحقق منه أيضاً.
+- الإعدادات المطلوبة في بيئة الخادم: `NIKO_AUTH_JWT_SECRET` و`NIKO_AUTH_ISSUER`، واختيارياً `NIKO_AUTH_AUDIENCE`. لا تضع هذه القيم داخل تطبيق الهاتف أو المستودع.
+- يجب أن يصدر JWT مزود هوية موثوق؛ هذا المستودع لا يحتوي حالياً على endpoint عام لتسجيل الدخول أو إصدار الرموز. لا تصنع رمزاً ثابتاً للاستخدام الإنتاجي.
+- واجهات التطبيق المحمية لن تعمل من Flutter حتى يُنجز تكامل تسجيل الدخول وتخزين الرمز الآمن في iOS Keychain.
+- PostgreSQL migration وRLS foundation موجودان واختبار العزل الحقيقي يعمل في CI باستخدام دور غير superuser وغير BYPASSRLS. لكن ربط كل مسارات البيانات الدائمة في API بسياق TenantDatabase لا يزال مطلوباً قبل تخزين المحادثات أو الذاكرة أو الملفات.
+- لا تعرض خادم التطوير على الإنترنت العام. استخدم HTTPS، وشبكة موثوقة، وأسراراً قوية، وحدود معدل وإنفاق قبل النشر.
 
-## ربط Android Emulator
+## ربط iPhone أثناء التطوير
 
-المحاكي يصل إلى الكمبيوتر المضيف عبر `10.0.2.2`:
-
-```powershell
-cd mobile
-flutter run -d emulator-5554 --dart-define=NIKO_API_BASE_URL=http://10.0.2.2:8000
-```
-
-إذا منع Android الاتصال عبر HTTP أثناء التطوير، أضف `android:usesCleartextTraffic="true"` إلى وسم `<application>` في `mobile/android/app/src/main/AndroidManifest.xml`. هذا استثناء تطوير محلي فقط؛ لا تستخدم HTTP في إصدار إنتاجي.
-
-## ربط iPhone لاحقاً
-يجب أن يكون الكمبيوتر وiPhone على شبكة Wi-Fi نفسها، ويُستخدم عنوان LAN للكمبيوتر بدلاً من `10.0.2.2`. يلزم إعداد Local Network وقيود ATS في مشروع iOS عند اعتماد هذا المسار. لا تفتح المنفذ 8000 على الإنترنت العام.
+يمكن تشغيل الخادم على عنوان LAN خاص، مع بقاء الجهازين على شبكة موثوقة واحدة. يتطلب iOS إعداد Local Network وATS حسب طريقة الاتصال. لا تفتح المنفذ للعامة، ولا تستخدم HTTP في إصدار إنتاجي.
 
 ## واجهات API
-- `GET /health`: حالة API وتوفر النموذج.
-- `POST /v1/chat`: يستقبل `message` و`language` ويعيد `reply` وبيانات المحرك.
+- `GET /health`: حالة API وتوفر نموذج Ollama.
+- `GET /v1/capabilities`: قدرات الخادم المتاحة فعلياً.
+- `GET /v1/session`: اختبار هوية JWT.
+- `POST /v1/chat`: محادثة نصية، وتتطلب JWT.
+- `POST /v1/documents`: إنشاء مستندات منظمة، وتتطلب JWT.
+- `POST /v1/images/generations` و`POST /v1/images/edits`: محمية بالمصادقة ومعطلة افتراضياً حتى يفعّلها مشغّل الخادم صراحةً.
 
 ## حدود النسخة الحالية
 - الاستدلال محلي على الكمبيوتر؛ ليس نموذجاً مدمجاً داخل iPhone أو خدمة سحابية.
-- لا توجد ذاكرة محادثة متعددة الأدوار على الخادم بعد؛ كل طلب يرسل رسالة واحدة.
+- لا توجد ذاكرة محادثة متعددة الأدوار على الخادم بعد؛ كل طلب محادثة مستقل.
 - اكتشاف اللغة واللهجة يعتمد على النموذج ويحتاج إلى اختبارات واقعية.
-- لا توجد مصادقة على API المحلي؛ شغّله على شبكة موثوقة فقط ولا تعرضه للإنترنت.
+- لا توجد حالياً واجهة تسجيل دخول أو تكامل مزود هوية في تطبيق الهاتف.
