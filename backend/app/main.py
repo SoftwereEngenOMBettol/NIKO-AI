@@ -5,10 +5,11 @@ from io import BytesIO
 from typing import Literal
 
 import httpx
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.auth import AuthenticatedPrincipal, verify_access_token
 from app.capabilities import get_capabilities
 from app.document_service import generate_document
 from app.image_provider import ImageProviderError, OpenAIImageProvider
@@ -99,6 +100,14 @@ async def health() -> dict[str, str | bool]:
             "model": OLLAMA_MODEL,
             "model_available": False,
         }
+
+
+@app.get("/v1/session")
+async def session(
+    principal: AuthenticatedPrincipal = Depends(verify_access_token),
+) -> dict[str, str]:
+    """Return only the identity derived from a verified server-side token."""
+    return {"issuer": principal.issuer, "subject": principal.subject}
 
 
 @app.get("/v1/capabilities")
