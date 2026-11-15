@@ -129,7 +129,7 @@ ALTER TABLE niko_users FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS user_self_access ON niko_users;
 CREATE POLICY user_self_access ON niko_users
     USING (id = niko_current_user_id())
-    WITH CHECK (id = NULLIF(current_setting('app.user_id', true), '')::uuid);
+    WITH CHECK (id = niko_current_user_id());
 
 -- Production deployment must grant only required table/sequence privileges to a
 -- non-superuser application role and must test RLS with the exact pooled role.
