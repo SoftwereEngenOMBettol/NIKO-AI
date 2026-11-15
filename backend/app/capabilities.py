@@ -24,16 +24,29 @@ def get_capabilities() -> dict:
     from app.image_provider import OpenAIImageProvider
     image_provider = OpenAIImageProvider()
     video_provider = os.getenv("NIKO_VIDEO_PROVIDER", "").strip()
+    image_policy_enabled = os.getenv("NIKO_IMAGE_PROVIDER_ENABLED", "false").strip().lower() == "true"
+    image_available = image_provider.configured and image_policy_enabled
     return {
         "chat": {"available": True, "provider": "ollama", "model": os.getenv("OLLAMA_MODEL", "qwen2.5:3b")},
         "documents": {"available": any(item["available"] for item in documents.values()), "formats": documents},
         "image_generation": {
-            "available": image_provider.configured,
+            "available": image_available,
             "provider_configured": image_provider.configured,
+            "policy_enabled": image_policy_enabled,
             "provider": "openai_images",
             "model": image_provider.model,
-            "status": "configured_not_health_checked" if image_provider.configured else "missing_backend_api_key",
-            "message": "Image generation endpoints are available when a backend API key is configured; the provider has not been health-checked." if image_provider.configured else "Set NIKO_IMAGE_API_KEY on the backend to enable image generation.",
+            "status": (
+                "configured_not_health_checked" if image_available
+                else "disabled_by_server_policy" if not image_policy_enabled
+                else "missing_backend_api_key"
+            ),
+            "message": (
+                "Image generation is enabled by server policy but has not been health-checked."
+                if image_available
+                else "Image generation is disabled by default. An operator must explicitly set NIKO_IMAGE_PROVIDER_ENABLED=true and configure a backend API key."
+                if not image_policy_enabled
+                else "Set NIKO_IMAGE_API_KEY on the backend to configure the image provider."
+            ),
         },
         "video_generation": {
             "available": False,
