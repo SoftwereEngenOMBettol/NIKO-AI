@@ -159,24 +159,26 @@ jobs:
           if not target_match:
               raise SystemExit("Runner native target or build configuration list not found")
           list_id = target_match.group(1)
-          list_marker = list_id + " /*"
-          list_pos = source.find(list_marker)
-          list_end = source.find("\n\t\t};", list_pos)
-          list_block = source[list_pos:list_end]
-          configs_match = re.search(r"buildConfigurations = \((.*?)\);", list_block, re.S)
+          list_match = re.search(
+              rf"{list_id} /\*.*?\*/ = \{{(.*?)\n\s*\}};",
+              source, re.S
+          )
+          if not list_match:
+              raise SystemExit("Runner configuration list definition not found")
+          configs_match = re.search(r"buildConfigurations = \((.*?)\);", list_match.group(1), re.S)
           if not configs_match:
               raise SystemExit("Runner build configuration IDs not found")
           config_ids = re.findall(r"[A-F0-9]{24}", configs_match.group(1))
 
           for config_id in config_ids:
-              config_marker = config_id + " /*"
-              config_pos = source.find(config_marker)
-              config_end = source.find("\n\t\t};", config_pos)
-              block = source[config_pos:config_end]
-              settings_match = re.search(r"(buildSettings = \{)(.*?)(\n\s*\};)", block, re.S)
-              if not settings_match:
-                  raise SystemExit(f"buildSettings not found for {config_id}")
-              settings = settings_match.group(2)
+              pattern = (
+                  rf"({config_id} /\*.*?\*/ = \{{\s*isa = XCBuildConfiguration;"
+                  rf"\s*buildSettings = \{{)(.*?)(\n\s*\}};)"
+              )
+              match = re.search(pattern, source, re.S)
+              if not match:
+                  raise SystemExit(f"Runner buildSettings not found for {config_id}")
+              settings = match.group(2)
               settings = re.sub(r"CODE_SIGN_STYLE = [^;]+;", "", settings)
               settings = re.sub(r"DEVELOPMENT_TEAM = [^;]*;", "", settings)
               settings = re.sub(r"PROVISIONING_PROFILE_SPECIFIER = [^;]*;", "", settings)
@@ -186,8 +188,7 @@ jobs:
                   f"\n\t\t\t\tDEVELOPMENT_TEAM = {team};"
                   f'\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "{profile}";'
               )
-              block = block[:settings_match.start(2)] + settings + block[settings_match.end(2):]
-              source = source[:config_pos] + block + source[config_end:]
+              source = source[:match.start(2)] + settings + source[match.end(2):]
 
           project.write_text(source)
           PY
