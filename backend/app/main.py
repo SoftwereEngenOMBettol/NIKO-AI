@@ -117,7 +117,10 @@ async def capabilities() -> dict:
 
 
 @app.post("/v1/documents")
-async def create_document(request: DocumentRequest) -> StreamingResponse:
+async def create_document(
+    request: DocumentRequest,
+    _principal: AuthenticatedPrincipal = Depends(verify_access_token),
+) -> StreamingResponse:
     """Generate a structured Office/text document and return the actual file bytes."""
     try:
         data, mime_type, filename = generate_document(
@@ -145,6 +148,7 @@ async def generate_image(
     prompt: str = Form(min_length=3, max_length=4000),
     size: str = Form(default="1024x1024"),
     quality: Literal["low", "medium", "high"] = Form(default="high"),
+    _principal: AuthenticatedPrincipal = Depends(verify_access_token),
 ) -> StreamingResponse:
     """Generate a high-quality image using the configured backend provider."""
     if size not in IMAGE_SIZES:
@@ -168,6 +172,7 @@ async def edit_image(
     size: str = Form(default="1024x1024"),
     quality: Literal["low", "medium", "high"] = Form(default="high"),
     image: UploadFile = File(...),
+    _principal: AuthenticatedPrincipal = Depends(verify_access_token),
 ) -> StreamingResponse:
     """Edit a user-provided image; original upload is held in memory only."""
     if size not in IMAGE_SIZES:
@@ -198,7 +203,10 @@ async def edit_image(
 
 
 @app.post("/v1/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
+async def chat(
+    request: ChatRequest,
+    _principal: AuthenticatedPrincipal = Depends(verify_access_token),
+) -> ChatResponse:
     payload = {
         "model": OLLAMA_MODEL,
         "stream": False,
