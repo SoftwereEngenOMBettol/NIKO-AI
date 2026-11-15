@@ -22,6 +22,8 @@
 
 - [توجيه مزودي النماذج وتقييمهم](MODEL_PROVIDER_ROUTING_SPEC.md)
 - [استوديو الصور والفيديو والصوت](MEDIA_CREATION_STUDIO_SPEC.md)
+- [المستندات والملفات والإنتاجية](DOCUMENTS_AND_PRODUCTIVITY_SPEC.md)
+- [المهام الشخصية والتذكيرات والتقويم](PERSONAL_TASKS_AND_REMINDERS_SPEC.md)
 - [تنفيذ المهارات والمهام والموافقات](SKILL_EXECUTION_AND_APPROVAL_SPEC.md)
 - [الذاكرة والبحث والتكاملات الرسمية](MEMORY_RESEARCH_INTEGRATIONS_SPEC.md)
 
