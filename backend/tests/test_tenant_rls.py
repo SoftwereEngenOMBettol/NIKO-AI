@@ -42,7 +42,7 @@ def test_two_tenants_are_isolated_by_rls_and_identity_bootstrap_is_stable():
             cur.execute("SELECT id FROM niko_conversations WHERE id = %s", (conversation_id,))
             assert cur.fetchone() is None
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
-                cur.execute("SELECT identity_subject FROM niko_identity_map")
+                cur.execute("SELECT identity_subject FROM niko_private.niko_identity_map")
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
                 cur.execute(
                     "INSERT INTO niko_conversations (id, owner_id, title) VALUES (%s, %s, %s)",
