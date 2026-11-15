@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.main as main
+from app.provider_policy import ProviderPolicy, ProviderPolicyGuard
 
 
 TEST_SECRET = "niko-test-secret-with-at-least-32-bytes"
@@ -137,8 +138,30 @@ def test_image_generation_rejects_missing_authentication_before_provider(monkeyp
     assert _FakeImageProvider.calls == 0
 
 
+def test_image_generation_is_disabled_by_default_policy(monkeypatch):
+    _FakeImageProvider.calls = 0
+    monkeypatch.setattr(main, "OpenAIImageProvider", _FakeImageProvider)
+    monkeypatch.setattr(
+        main,
+        "IMAGE_PROVIDER_GUARD",
+        ProviderPolicyGuard({"openai_images": ProviderPolicy(enabled=False)}),
+    )
+    response = TestClient(main.app).post(
+        "/v1/images/generations",
+        headers=_auth_headers(monkeypatch),
+        data={"prompt": "A simple test image", "size": "1024x1024", "quality": "low"},
+    )
+    assert response.status_code == 503
+    assert _FakeImageProvider.calls == 0
+
+
 def test_image_generation_accepts_valid_authentication(monkeypatch):
     monkeypatch.setattr(main, "OpenAIImageProvider", _FakeImageProvider)
+    monkeypatch.setattr(
+        main,
+        "IMAGE_PROVIDER_GUARD",
+        ProviderPolicyGuard({"openai_images": ProviderPolicy(enabled=True)}),
+    )
     response = TestClient(main.app).post(
         "/v1/images/generations",
         headers=_auth_headers(monkeypatch),
@@ -162,6 +185,11 @@ def test_image_edit_rejects_missing_authentication_before_provider(monkeypatch):
 
 def test_image_edit_accepts_valid_authentication(monkeypatch):
     monkeypatch.setattr(main, "OpenAIImageProvider", _FakeImageProvider)
+    monkeypatch.setattr(
+        main,
+        "IMAGE_PROVIDER_GUARD",
+        ProviderPolicyGuard({"openai_images": ProviderPolicy(enabled=True)}),
+    )
     response = TestClient(main.app).post(
         "/v1/images/edits",
         headers=_auth_headers(monkeypatch),
