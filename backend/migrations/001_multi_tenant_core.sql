@@ -79,8 +79,27 @@ CREATE INDEX IF NOT EXISTS idx_niko_jobs_owner_status_created
     ON niko_jobs(owner_id, status, created_at DESC);
 
 -- Tenant isolation policies. The request/worker layer must SET LOCAL app.user_id
--- from a verified principal inside every transaction. Missing context returns no rows.
-DO $$
+-- from a verified principal inside every transaction. Missing or malformed context
+-- returns NULL (fail closed) instead of raising a cast error.
+CREATE OR REPLACE FUNCTION niko_current_user_id()
+RETURNS UUID
+LANGUAGE plpgsql
+STABLE
+AS $
+DECLARE
+    raw_user_id TEXT;
+BEGIN
+    raw_user_id := NULLIF(current_setting('app.user_id', true), '');
+    IF raw_user_id IS NULL THEN
+        RETURN NULL;
+    END IF;
+    RETURN raw_user_id::UUID;
+EXCEPTION WHEN invalid_text_representation THEN
+    RETURN NULL;
+END;
+$;
+
+DO $
 DECLARE
     table_name TEXT;
 BEGIN
@@ -99,7 +118,7 @@ BEGIN
             table_name
         );
         EXECUTE format(
-            'CREATE POLICY tenant_isolation ON %I USING (owner_id = NULLIF(current_setting(''app.user_id'', true), '''')::uuid) WITH CHECK (owner_id = NULLIF(current_setting(''app.user_id'', true), '''')::uuid)',
+            'CREATE POLICY tenant_isolation ON %I USING (owner_id = niko_current_user_id()) WITH CHECK (owner_id = niko_current_user_id())',
             table_name
         );
     END LOOP;
@@ -109,7 +128,7 @@ ALTER TABLE niko_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE niko_users FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS user_self_access ON niko_users;
 CREATE POLICY user_self_access ON niko_users
-    USING (id = NULLIF(current_setting('app.user_id', true), '')::uuid)
+    USING (id = niko_current_user_id())
     WITH CHECK (id = NULLIF(current_setting('app.user_id', true), '')::uuid);
 
 -- Production deployment must grant only required table/sequence privileges to a
