@@ -153,7 +153,7 @@ jobs:
 
           # Find the PBXNativeTarget named Runner and its three build configurations.
           target_match = re.search(
-              r"[A-F0-9]{24} /\\* Runner \\*/ = \\{\\s*isa = PBXNativeTarget;.*?buildConfigurationList = ([A-F0-9]{24})",
+              r"[A-F0-9]{24} /\* Runner \*/ = \{\s*isa = PBXNativeTarget;.*?buildConfigurationList = ([A-F0-9]{24})",
               source, re.S
           )
           if not target_match:
@@ -182,9 +182,9 @@ jobs:
               settings = re.sub(r"PROVISIONING_PROFILE_SPECIFIER = [^;]*;", "", settings)
               settings += (
                   f"\n\t\t\t\tCODE_SIGN_STYLE = Manual;"
-                  f"\n\t\t\t\tCODE_SIGN_IDENTITY = \\"Apple Distribution\\";"
+                  f'\n\t\t\t\tCODE_SIGN_IDENTITY = "Apple Distribution";'
                   f"\n\t\t\t\tDEVELOPMENT_TEAM = {team};"
-                  f"\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = \"{profile}\";"
+                  f'\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "{profile}";'
               )
               block = block[:settings_match.start(2)] + settings + block[settings_match.end(2):]
               source = source[:config_pos] + block + source[config_end:]
