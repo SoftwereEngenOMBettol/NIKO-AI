@@ -91,12 +91,24 @@ jobs:
           ASC_PRIVATE_KEY: \${{ secrets.ASC_PRIVATE_KEY }}
         run: |
           set -euo pipefail
+          missing=0
           for name in IOS_CERTIFICATE_P12_BASE64 IOS_CERTIFICATE_PASSWORD IOS_PROVISIONING_PROFILE_BASE64 IOS_TEAM_ID IOS_KEYCHAIN_PASSWORD ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY; do
-            if [ -z "\${!name:-}" ]; then
+            case "$name" in
+              IOS_CERTIFICATE_P12_BASE64) value="$IOS_CERTIFICATE_P12_BASE64" ;;
+              IOS_CERTIFICATE_PASSWORD) value="$IOS_CERTIFICATE_PASSWORD" ;;
+              IOS_PROVISIONING_PROFILE_BASE64) value="$IOS_PROVISIONING_PROFILE_BASE64" ;;
+              IOS_TEAM_ID) value="$IOS_TEAM_ID" ;;
+              IOS_KEYCHAIN_PASSWORD) value="$IOS_KEYCHAIN_PASSWORD" ;;
+              ASC_KEY_ID) value="$ASC_KEY_ID" ;;
+              ASC_ISSUER_ID) value="$ASC_ISSUER_ID" ;;
+              ASC_PRIVATE_KEY) value="$ASC_PRIVATE_KEY" ;;
+            esac
+            if [ -z "$value" ]; then
               echo "Missing required GitHub Actions secret: $name"
-              exit 1
+              missing=1
             fi
           done
+          exit "$missing"
 
   build-signed-ipa:
     needs: validate-testflight-request
