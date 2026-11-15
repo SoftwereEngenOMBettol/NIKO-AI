@@ -2,6 +2,11 @@ name: Build NIKO iOS Simulator
 
 on:
   push:
+    branches: [main, "feat/**"]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/ios-simulator.yml"
+  pull_request:
     branches: [main]
     paths:
       - "mobile/**"
@@ -24,17 +29,19 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Generate iOS platform files
+      # This generated scaffold is CI-only. Native iOS implementation must be
+      # committed to mobile/ios before it can be considered part of the app.
+      - name: Generate temporary iOS scaffold
         run: flutter create --platforms=ios --org com.nikoai --project-name niko_ai /tmp/niko_ios
 
       - name: Add iOS platform to app
         run: cp -R /tmp/niko_ios/ios mobile/ios
 
-      - name: Configure iOS app identity and speech permissions
+      - name: Configure iOS app identity and permissions
         run: |
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName NIKO" mobile/ios/Runner/Info.plist
-          /usr/libexec/PlistBuddy -c "Add :NSSpeechRecognitionUsageDescription string NIKO uses speech recognition to turn your spoken words into message text." mobile/ios/Runner/Info.plist
-          /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string NIKO uses the microphone only when you tap the voice input button." mobile/ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSSpeechRecognitionUsageDescription string NIKO uses speech recognition when the user explicitly starts voice input." mobile/ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string NIKO uses the microphone only during a user-started voice session." mobile/ios/Runner/Info.plist
 
       - name: Install dependencies
         working-directory: mobile
