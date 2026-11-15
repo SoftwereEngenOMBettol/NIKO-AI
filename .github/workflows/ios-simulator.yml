@@ -138,54 +138,59 @@ jobs:
           python3 - <<'PY'
           import os, re
           from pathlib import Path
+
           project = Path("mobile/ios/Runner.xcodeproj/project.pbxproj")
           source = project.read_text()
           bundle = os.environ["IOS_BUNDLE_ID"]
           team = os.environ["TEAM_ID"]
           profile = os.environ["NIKO_PROFILE_NAME"]
 
-          # Update bundle identifiers for Runner and its test target.
-          def bundle_id(match):
+          def replace_bundle(match):
               old = match.group(1)
               suffix = ".RunnerTests" if "RunnerTests" in old else ""
               return f"PRODUCT_BUNDLE_IDENTIFIER = {bundle}{suffix};"
-          source = re.sub(r"PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);", bundle_id, source)
+          source = re.sub(r"PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);", replace_bundle, source)
 
-          # Locate the Runner target's build configuration list, then update
-          # only its Debug/Profile/Release configurations (not RunnerTests).
-          target = re.search(
-              r"[A-F0-9]{24} /\\* Runner \\*/ = \\{.*?buildConfigurationList = ([A-F0-9]{24})",
-              source, re.S
-          )
-          if not target:
-              raise SystemExit("Could not locate Runner build configuration list")
-          list_id = target.group(1)
-          list_block = re.search(
-              rf"{list_id} /\\*.*?\\*/ = \\{{.*?buildConfigurations = \\( (.*?) \\);",
-              source, re.S
-          )
-          if not list_block:
-              raise SystemExit("Could not locate Runner build configurations")
-          config_ids = re.findall(r"([A-F0-9]{24})", list_block.group(1))
-          if not config_ids:
-              raise SystemExit("Runner build configuration list is empty")
+          # Find the PBXNativeTarget named Runner and its three build configurations.
+          marker = "/* Runner */ = {"
+          target_pos = source.find(marker)
+          if target_pos < 0:
+              raise SystemExit("Runner target not found in project.pbxproj")
+          target_start = source.rfind("\n", 0, target_pos)
+          target_block = source[target_start:source.find("\n\t\t};", target_pos)]
+          config_match = re.search(r"buildConfigurationList = ([A-F0-9]{24})", target_block)
+          if not config_match:
+              raise SystemExit("Runner build configuration list not found")
+          list_id = config_match.group(1)
+          list_marker = list_id + " /*"
+          list_pos = source.find(list_marker)
+          list_end = source.find("\n\t\t};", list_pos)
+          list_block = source[list_pos:list_end]
+          configs_match = re.search(r"buildConfigurations = \((.*?)\);", list_block, re.S)
+          if not configs_match:
+              raise SystemExit("Runner build configuration IDs not found")
+          config_ids = re.findall(r"[A-F0-9]{24}", configs_match.group(1))
 
           for config_id in config_ids:
-              pattern = rf"({config_id} /\\*.*?\\*/ = \\{{.*?buildSettings = \\{{)(.*?)(\\n\\s*\\}};)"
-              match = re.search(pattern, source, re.S)
-              if not match:
-                  raise SystemExit(f"Could not patch Runner configuration {config_id}")
-              settings = match.group(2)
-              settings = re.sub(r"CODE_SIGN_STYLE = [^;]+;", "CODE_SIGN_STYLE = Manual;", settings)
+              config_marker = config_id + " /*"
+              config_pos = source.find(config_marker)
+              config_end = source.find("\n\t\t};", config_pos)
+              block = source[config_pos:config_end]
+              settings_match = re.search(r"(buildSettings = \{)(.*?)(\n\t\t\t\t\};)", block, re.S)
+              if not settings_match:
+                  raise SystemExit(f"buildSettings not found for {config_id}")
+              settings = settings_match.group(2)
+              settings = re.sub(r"CODE_SIGN_STYLE = [^;]+;", "", settings)
               settings = re.sub(r"DEVELOPMENT_TEAM = [^;]*;", "", settings)
               settings = re.sub(r"PROVISIONING_PROFILE_SPECIFIER = [^;]*;", "", settings)
               settings += (
-                  f"\\n\\t\\t\\t\\tCODE_SIGN_STYLE = Manual;"
-                  f"\\n\\t\\t\\t\\tCODE_SIGN_IDENTITY = \\"Apple Distribution\\";"
-                  f"\\n\\t\\t\\t\\tDEVELOPMENT_TEAM = {team};"
-                  f"\\n\\t\\t\\t\\tPROVISIONING_PROFILE_SPECIFIER = \\"{profile}\\";"
+                  f"\n\t\t\t\tCODE_SIGN_STYLE = Manual;"
+                  f"\n\t\t\t\tCODE_SIGN_IDENTITY = Apple Distribution;"
+                  f"\n\t\t\t\tDEVELOPMENT_TEAM = {team};"
+                  f"\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = \"{profile}\";"
               )
-              source = source[:match.start(2)] + settings + source[match.end(2):]
+              block = block[:settings_match.start(2)] + settings + block[settings_match.end(2):]
+              source = source[:config_pos] + block + source[config_end:]
 
           project.write_text(source)
           PY
