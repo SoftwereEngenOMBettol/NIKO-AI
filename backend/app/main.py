@@ -5,12 +5,13 @@ from io import BytesIO
 from typing import Literal
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.capabilities import get_capabilities
 from app.document_service import generate_document
+from app.image_provider import ImageProviderError, OpenAIImageProvider
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
@@ -123,6 +124,67 @@ async def create_document(request: DocumentRequest) -> StreamingResponse:
         BytesIO(data),
         media_type=mime_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+IMAGE_MAX_BYTES = 15 * 1024 * 1024
+IMAGE_SIZES = {"1024x1024", "1024x1536", "1536x1024"}
+
+
+@app.post("/v1/images/generations")
+async def generate_image(
+    prompt: str = Form(min_length=3, max_length=4000),
+    size: str = Form(default="1024x1024"),
+    quality: Literal["low", "medium", "high"] = Form(default="high"),
+) -> StreamingResponse:
+    """Generate a high-quality image using the configured backend provider."""
+    if size not in IMAGE_SIZES:
+        raise HTTPException(status_code=422, detail="Unsupported image size.")
+    provider = OpenAIImageProvider()
+    try:
+        result = await provider.generate(prompt=prompt, size=size, quality=quality)
+    except ImageProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return StreamingResponse(
+        BytesIO(result.content),
+        media_type=result.mime_type,
+        headers={"Content-Disposition": 'inline; filename="niko-generated.png"',
+                 "X-Niko-Image-Model": result.model},
+    )
+
+
+@app.post("/v1/images/edits")
+async def edit_image(
+    prompt: str = Form(min_length=3, max_length=4000),
+    size: str = Form(default="1024x1024"),
+    quality: Literal["low", "medium", "high"] = Form(default="high"),
+    image: UploadFile = File(...),
+) -> StreamingResponse:
+    """Edit a user-provided image; original upload is held in memory only."""
+    if size not in IMAGE_SIZES:
+        raise HTTPException(status_code=422, detail="Unsupported image size.")
+    if image.content_type not in {"image/png", "image/jpeg", "image/webp"}:
+        raise HTTPException(status_code=415, detail="Upload a PNG, JPEG, or WebP image.")
+    content = await image.read(IMAGE_MAX_BYTES + 1)
+    if not content or len(content) > IMAGE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Image must be between 1 byte and 15 MB.")
+    provider = OpenAIImageProvider()
+    try:
+        result = await provider.edit(
+            prompt=prompt,
+            image_bytes=content,
+            filename=image.filename or "source.png",
+            mime_type=image.content_type,
+            size=size,
+            quality=quality,
+        )
+    except ImageProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return StreamingResponse(
+        BytesIO(result.content),
+        media_type=result.mime_type,
+        headers={"Content-Disposition": 'inline; filename="niko-edited.png"',
+                 "X-Niko-Image-Model": result.model},
     )
 
 
