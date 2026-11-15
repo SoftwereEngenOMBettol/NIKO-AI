@@ -105,3 +105,22 @@
 ## 7. ما لا يمكن إتمامه من GitHub وحده
 
 يمكن بناء الكود والاختبارات والموصلات والتوثيق وCI داخل المستودع. لكن التشغيل الفعلي لبعض الخدمات يتطلب لاحقاً مفاتيح API أو حسابات مزودين أو موافقات OAuth أو رقم هاتف أو استضافة أو توقيع Apple. نجهز جميع نقاط الربط الآن، ونؤجل إدخال الأسرار والحسابات إلى مرحلة الإعداد النهائية. لا نضع بيانات اعتماد حقيقية في المستودع.
+
+
+## 8. Multi-user privacy, security and scale (mandatory release gate)
+
+NIKO is a multi-user product. Each account is a separate security boundary. A user must never access another user's conversations, memory, voice data, files, generated images/videos/documents, jobs, settings, integrations or billing records.
+
+- Authenticate every private API request. Validate token signature, issuer, audience, expiry and session state on the backend.
+- Derive user/tenant identity from the verified token on the server. Never trust a client-supplied user_id, tenant_id, owner_id, role or storage path.
+- Scope every database query, file operation, search, background job, export and deletion to the authenticated user. Use PostgreSQL constraints and Row-Level Security as defence in depth.
+- Keep object storage private. Issue short-lived signed URLs only after checking ownership. Validate file signature/type/size and isolate parsers and media workers.
+- Encrypt traffic with TLS and encrypt databases, backups and files at rest. Keep secrets in a server-side secret manager; never embed provider keys in Flutter or GitHub source.
+- Minimize collection and retention. Do not upload idle wake-word audio. Do not retain raw recordings by default. Do not use private content for model training without explicit informed opt-in.
+- Redact prompts, transcripts, files, tokens and personal information from logs. Provide account export, deletion, session revocation and retention controls.
+- Scale with stateless API instances, PostgreSQL, private object storage and a durable queue for long-running jobs. Apply per-user quotas, rate limits, concurrency limits, provider spend caps, bounded retries and backpressure.
+- "Many users" is a load-tested capacity goal, not an unlimited guarantee. Stage load tests (100/1,000/10,000 concurrent sessions) and publish measured limits before launch.
+
+**Mandatory tests:** two or more isolated users; IDOR attempts against every resource type; cross-tenant list/search/pagination/export/download/update/delete; worker retry isolation; pooled database connection/RLS leakage; revoked tokens; malicious uploads; and log/trace redaction.
+
+**Release gate:** no public multi-user release until authentication, authorization, tenant isolation, private storage, deletion/export, abuse controls, backup/restore, monitoring and independent security review pass. See [SECURITY_PRIVACY_MULTI_TENANT.md](docs/SECURITY_PRIVACY_MULTI_TENANT.md).
