@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import os
+from io import BytesIO
 from typing import Literal
 
 import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+
+from app.capabilities import get_capabilities
+from app.document_service import generate_document
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
-app = FastAPI(title="NIKO AI Local Engine", version="0.1.0")
+app = FastAPI(title="NIKO AI Engine", version="0.2.0")
 
 
 class ChatRequest(BaseModel):
@@ -22,6 +27,19 @@ class ChatResponse(BaseModel):
     language: str
     provider: str
     model: str
+
+
+class DocumentSection(BaseModel):
+    heading: str = Field(default="", max_length=160)
+    text: str = Field(default="", max_length=20000)
+
+
+class DocumentRequest(BaseModel):
+    format: Literal["docx", "xlsx", "pptx", "txt", "csv"]
+    title: str = Field(min_length=1, max_length=160)
+    content: str = Field(default="", max_length=20000)
+    sections: list[DocumentSection] = Field(default_factory=list, max_length=100)
+    rows: list[list[str]] = Field(default_factory=list, max_length=5000)
 
 
 SYSTEM_PROMPT = """أنت نيكو، مساعد شخصي ذكي وودود. تحدث كإنسان طبيعي، لا كروبوت.
@@ -80,6 +98,32 @@ async def health() -> dict[str, str | bool]:
             "model": OLLAMA_MODEL,
             "model_available": False,
         }
+
+
+@app.get("/v1/capabilities")
+async def capabilities() -> dict:
+    """Return truthful runtime feature availability for the client."""
+    return get_capabilities()
+
+
+@app.post("/v1/documents")
+async def create_document(request: DocumentRequest) -> StreamingResponse:
+    """Generate a structured Office/text document and return the actual file bytes."""
+    try:
+        data, mime_type, filename = generate_document(
+            file_format=request.format,
+            title=request.title,
+            content=request.content,
+            sections=[section.model_dump() for section in request.sections],
+            rows=request.rows,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return StreamingResponse(
+        BytesIO(data),
+        media_type=mime_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.post("/v1/chat", response_model=ChatResponse)
