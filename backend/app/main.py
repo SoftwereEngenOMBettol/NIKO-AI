@@ -13,10 +13,25 @@ from app.auth import AuthenticatedPrincipal, verify_access_token
 from app.capabilities import get_capabilities
 from app.document_service import generate_document
 from app.image_provider import ImageProviderError, OpenAIImageProvider
+from app.provider_policy import ProviderPolicy, ProviderPolicyError, ProviderPolicyGuard, ProviderRequest
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
 app = FastAPI(title="NIKO AI Engine", version="0.2.0")
+
+# External image generation is a potentially billable action. It stays disabled
+# unless an operator explicitly opts in on the backend environment.
+IMAGE_PROVIDER_ENABLED = os.getenv("NIKO_IMAGE_PROVIDER_ENABLED", "false").strip().lower() == "true"
+try:
+    IMAGE_PROVIDER_MAX_CONCURRENT = max(1, int(os.getenv("NIKO_IMAGE_MAX_CONCURRENT", "1")))
+except ValueError:
+    IMAGE_PROVIDER_MAX_CONCURRENT = 1
+IMAGE_PROVIDER_GUARD = ProviderPolicyGuard({
+    "openai_images": ProviderPolicy(
+        enabled=IMAGE_PROVIDER_ENABLED,
+        max_concurrent=IMAGE_PROVIDER_MAX_CONCURRENT,
+    )
+})
 
 
 class ChatRequest(BaseModel):
@@ -153,11 +168,17 @@ async def generate_image(
     """Generate a high-quality image using the configured backend provider."""
     if size not in IMAGE_SIZES:
         raise HTTPException(status_code=422, detail="Unsupported image size.")
-    provider = OpenAIImageProvider()
     try:
+        IMAGE_PROVIDER_GUARD.acquire(ProviderRequest("openai_images"))
+    except ProviderPolicyError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        provider = OpenAIImageProvider()
         result = await provider.generate(prompt=prompt, size=size, quality=quality)
     except ImageProviderError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    finally:
+        IMAGE_PROVIDER_GUARD.release("openai_images")
     return StreamingResponse(
         BytesIO(result.content),
         media_type=result.mime_type,
@@ -182,8 +203,12 @@ async def edit_image(
     content = await image.read(IMAGE_MAX_BYTES + 1)
     if not content or len(content) > IMAGE_MAX_BYTES:
         raise HTTPException(status_code=413, detail="Image must be between 1 byte and 15 MB.")
-    provider = OpenAIImageProvider()
     try:
+        IMAGE_PROVIDER_GUARD.acquire(ProviderRequest("openai_images"))
+    except ProviderPolicyError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        provider = OpenAIImageProvider()
         result = await provider.edit(
             prompt=prompt,
             image_bytes=content,
@@ -194,6 +219,8 @@ async def edit_image(
         )
     except ImageProviderError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    finally:
+        IMAGE_PROVIDER_GUARD.release("openai_images")
     return StreamingResponse(
         BytesIO(result.content),
         media_type=result.mime_type,
