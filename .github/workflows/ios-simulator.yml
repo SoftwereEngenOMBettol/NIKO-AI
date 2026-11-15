@@ -76,7 +76,7 @@ jobs:
           retention-days: 14
 
   build-signed-ipa:
-    if: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 != '' && secrets.IOS_CERTIFICATE_PASSWORD != '' && secrets.IOS_PROVISIONING_PROFILE_BASE64 != '' && secrets.IOS_TEAM_ID != '' && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' && secrets.ASC_PRIVATE_KEY != '' }}
+    if: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 != '' && secrets.IOS_CERTIFICATE_PASSWORD != '' && secrets.IOS_PROVISIONING_PROFILE_BASE64 != '' && secrets.IOS_TEAM_ID != '' && secrets.IOS_KEYCHAIN_PASSWORD != '' && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' && secrets.ASC_PRIVATE_KEY != '' }}
     runs-on: macos-latest
     steps:
       - name: Check out repository
@@ -185,7 +185,7 @@ jobs:
               settings = re.sub(r"PROVISIONING_PROFILE_SPECIFIER = [^;]*;", "", settings)
               settings += (
                   f"\n\t\t\t\tCODE_SIGN_STYLE = Manual;"
-                  f"\n\t\t\t\tCODE_SIGN_IDENTITY = Apple Distribution;"
+                  f"\n\t\t\t\tCODE_SIGN_IDENTITY = \\"Apple Distribution\\";"
                   f"\n\t\t\t\tDEVELOPMENT_TEAM = {team};"
                   f"\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = \"{profile}\";"
               )
