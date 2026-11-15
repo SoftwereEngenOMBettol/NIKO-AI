@@ -88,32 +88,36 @@ BEGIN
 END
 $$;
 
-CREATE TABLE IF NOT EXISTS niko_identity_map (
+CREATE SCHEMA IF NOT EXISTS niko_private AUTHORIZATION niko_identity_resolver;
+ALTER SCHEMA niko_private OWNER TO niko_identity_resolver;
+REVOKE ALL ON SCHEMA niko_private FROM PUBLIC;
+
+CREATE TABLE IF NOT EXISTS niko_private.niko_identity_map (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     identity_issuer TEXT NOT NULL,
     identity_subject TEXT NOT NULL,
     UNIQUE (identity_issuer, identity_subject)
 );
 
-REVOKE ALL ON TABLE niko_identity_map FROM PUBLIC;
-GRANT USAGE ON SCHEMA public TO niko_identity_resolver;
-GRANT SELECT, INSERT, UPDATE ON TABLE niko_identity_map TO niko_identity_resolver;
+REVOKE ALL ON TABLE niko_private.niko_identity_map FROM PUBLIC;
+GRANT USAGE ON SCHEMA niko_private TO niko_identity_resolver;
+GRANT SELECT, INSERT, UPDATE ON TABLE niko_private.niko_identity_map TO niko_identity_resolver;
 
-CREATE OR REPLACE FUNCTION niko_resolve_user_id(p_issuer TEXT, p_subject TEXT)
+CREATE OR REPLACE FUNCTION niko_private.niko_resolve_user_id(p_issuer TEXT, p_subject TEXT)
 RETURNS UUID
 LANGUAGE SQL
 SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = pg_catalog
 AS $$
-    INSERT INTO public.niko_identity_map (identity_issuer, identity_subject)
+    INSERT INTO niko_private.niko_identity_map (identity_issuer, identity_subject)
     VALUES (p_issuer, p_subject)
     ON CONFLICT (identity_issuer, identity_subject)
     DO UPDATE SET identity_subject = EXCLUDED.identity_subject
     RETURNING id;
 $$;
 
-ALTER FUNCTION niko_resolve_user_id(TEXT, TEXT) OWNER TO niko_identity_resolver;
-REVOKE ALL ON FUNCTION niko_resolve_user_id(TEXT, TEXT) FROM PUBLIC;
+ALTER FUNCTION niko_private.niko_resolve_user_id(TEXT, TEXT) OWNER TO niko_identity_resolver;
+REVOKE ALL ON FUNCTION niko_private.niko_resolve_user_id(TEXT, TEXT) FROM PUBLIC;
 
 -- Tenant isolation policies. Missing or malformed transaction context returns NULL.
 CREATE OR REPLACE FUNCTION niko_current_user_id()
@@ -164,5 +168,5 @@ CREATE POLICY user_self_access ON niko_users
     USING (id = niko_current_user_id())
     WITH CHECK (id = niko_current_user_id());
 
--- Grant EXECUTE on niko_resolve_user_id(TEXT, TEXT) to the backend application
--- role during deployment. Do not grant direct access to niko_identity_map.
+-- Grant USAGE on schema niko_private and EXECUTE on its resolver function to the
+-- backend application role during deployment. Never grant direct table access.
