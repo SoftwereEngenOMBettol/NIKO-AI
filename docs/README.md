@@ -26,6 +26,8 @@
 - [المهام الشخصية والتذكيرات والتقويم](PERSONAL_TASKS_AND_REMINDERS_SPEC.md)
 - [تنفيذ المهارات والمهام والموافقات](SKILL_EXECUTION_AND_APPROVAL_SPEC.md)
 - [الذاكرة والبحث والتكاملات الرسمية](MEMORY_RESEARCH_INTEGRATIONS_SPEC.md)
+- [وكيل التصفح والطلبات والمكالمات](AGENT_BROWSER_ORDERS_AND_CALLS_SPEC.md)
+- [توجيه النماذج واستوديو الوسائط وفق معيار Tab](TAB_MODEL_ROUTING_AND_MEDIA_STUDIO_SPEC.md)
 
 ## الأمان والخصوصية
 
