@@ -107,3 +107,56 @@ Not tested by this review:
 8. Add IDOR tests for all resource operations before exposing persistent user data.
 
 **Release recommendation:** Do not expose the API as a multi-user public service until SEC-001 through SEC-004 are fixed and verified, and cross-tenant integration tests pass.
+
+
+---
+
+## Follow-up verification — 15 November 2026
+
+This section supersedes the original "current behavior" statements above where the implementation has since changed. The initial review remains as historical evidence of the pre-fix state.
+
+### Authentication follow-up
+
+At branch revision `79eb1a35296b5af4cf777c94c0e45f88e24c6749`, the following private routes declare `Depends(verify_access_token)`:
+
+- `POST /v1/chat`
+- `POST /v1/documents`
+- `POST /v1/images/generations`
+- `POST /v1/images/edits`
+
+The session endpoint also requires a verified token. The route-level dependency is evaluated before the endpoint body, so unauthenticated requests should not reach Ollama, document generation or image-provider calls.
+
+The characterization tests were updated in commit `4a2f2e38cdd4fa6524426af353038cf9d6a687af` to assert:
+- Missing JWT returns 401 on the four private routes.
+- Provider/generator fakes are not called when JWT is missing.
+- A valid test JWT can reach the endpoint handlers.
+
+These tests use local fakes and do not make paid provider calls. The new commit triggered CI; its final result must be checked separately.
+
+### RLS follow-up and current blocker
+
+The branch now includes `backend/app/tenant_db.py`, which maps the verified `(issuer, subject)` principal to an internal user UUID and sets transaction-local `app.user_id`. It also includes a two-principal PostgreSQL integration test and a PostgreSQL 16 service in Backend CI.
+
+However, Backend CI run #55 at revision `79eb1a35296b5af4cf777c94c0e45f88e24c6749` failed with **5 failed, 16 passed**:
+- Four failures were the outdated anonymous-access characterization tests; these were updated in commit `4a2f2e38cdd4fa6524426af353038cf9d6a687af`.
+- The remaining RLS test failed because PostgreSQL reported `function niko_current_user_id() does not exist`.
+
+The PostgreSQL service logs show that the migration's PL/pgSQL function and DO block were submitted with malformed dollar-quote delimiters (`AS $` / `DO $`) rather than valid dollar-quoted bodies. Consequently the function and RLS policies were not created, and `TenantDatabase.transaction()` failed when it called the missing function.
+
+**RLS is therefore NOT verified and must not be considered complete.** The migration owner must correct the SQL delimiters, rerun the migration from a clean PostgreSQL database, and obtain a passing two-user RLS integration test using the non-superuser `niko_app` role.
+
+### Remaining security gaps
+
+- No rate limiting, per-user concurrency limits, or provider spend caps have yet been evidenced in the inspected route implementation.
+- The tenant transaction bridge exists, but the currently inspected API handlers do not use it for persistent tenant resources. The current endpoints return generated content directly and do not yet provide persistent conversation, memory, asset or job APIs.
+- Worker identity propagation and worker-side RLS have not been demonstrated.
+- Private object storage, owner-checked signed downloads, deletion/export, and IDOR coverage for persistent resource APIs remain unverified.
+- A passing RLS test for one conversation table does not prove isolation for every future resource or operation.
+
+### Current evidence and limitations
+
+- Backend CI run #55: failed; see https://github.com/SoftwereEngenOMBettol/NIKO-AI/actions/runs/43738157918
+- iOS Simulator CI run #44 at the same revision: passed; this is a simulator build only, not a physical iPhone test.
+- No production deployment, live paid provider call, physical-device security test, or independent penetration test was performed as part of this follow-up.
+
+**Release recommendation:** Do not expose NIKO as a public multi-user service until the RLS migration and integration test pass, every private route is authenticated, quotas/abuse controls exist, and resource/worker/storage ownership tests pass.
