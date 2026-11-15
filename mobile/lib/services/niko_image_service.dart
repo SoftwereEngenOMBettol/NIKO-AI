@@ -8,13 +8,32 @@ class NikoImageService {
       : _baseUrl = (baseUrl ??
                 const String.fromEnvironment(
                   'NIKO_API_BASE_URL',
-                  defaultValue: 'http://10.0.2.2:8000',
+                  defaultValue: '',
                 ))
             .replaceFirst(RegExp(r'/+$'), ''),
         _client = client ?? http.Client();
 
   final String _baseUrl;
   final http.Client _client;
+
+  Uri _endpoint(String path) {
+    if (_baseUrl.isEmpty) {
+      throw const NikoImageException(
+        'لم يتم إعداد عنوان خادم NIKO. يجب ضبط NIKO_API_BASE_URL على عنوان HTTPS الخاص بالخادم.',
+      );
+    }
+    final uri = Uri.tryParse('$_baseUrl$path');
+    if (uri == null ||
+        !uri.hasAuthority ||
+        (uri.scheme != 'https' &&
+            !(uri.scheme == 'http' &&
+                (uri.host == 'localhost' || uri.host == '127.0.0.1')))) {
+      throw const NikoImageException(
+        'عنوان خادم NIKO غير صالح. استخدم HTTPS للخادم البعيد.',
+      );
+    }
+    return uri;
+  }
 
   Future<Uint8List> generate({
     required String prompt,
@@ -23,7 +42,7 @@ class NikoImageService {
   }) async {
     final request = http.MultipartRequest(
       'POST',
-      Uri.parse('$_baseUrl/v1/images/generations'),
+      _endpoint('/v1/images/generations'),
     )
       ..fields['prompt'] = prompt
       ..fields['size'] = size
@@ -39,7 +58,8 @@ class NikoImageService {
         detail.isNotEmpty ? detail : 'تعذر إنشاء الصورة (${response.statusCode}).',
       );
     }
-    if (bytes.isEmpty || !(response.headers['content-type'] ?? '').startsWith('image/')) {
+    if (bytes.isEmpty ||
+        !(response.headers['content-type'] ?? '').startsWith('image/')) {
       throw const NikoImageException('لم يرجع محرك الصور ملف صورة صالحاً.');
     }
     return bytes;
