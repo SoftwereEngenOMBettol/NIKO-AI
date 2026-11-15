@@ -99,7 +99,8 @@ jobs:
           done
 
   build-signed-ipa:
-    if: ${{ vars.ENABLE_IOS_SIGNING == 'true' }}
+    needs: validate-testflight-request
+    if: ${{ always() && vars.ENABLE_IOS_SIGNING == 'true' && (needs.validate-testflight-request.result == 'success' || needs.validate-testflight-request.result == 'skipped') }}
     runs-on: macos-latest
     steps:
       - name: Check out repository
