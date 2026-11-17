@@ -1,0 +1,115 @@
+name: Build NIKO iOS Device IPA (AltStore)
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: "Backend URL reachable from the iPhone (both devices must be on the same Wi-Fi)"
+        required: true
+        type: string
+        default: "http://192.168.100.19:8000"
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios-device:
+    runs-on: macos-latest
+    env:
+      NIKO_API_BASE_URL: ${{ inputs.api_base_url }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate iOS platform files
+        run: flutter create --platforms=ios --org com.nikoai --project-name niko_ai /tmp/niko_ios
+
+      - name: Add iOS platform to app
+        run: cp -R /tmp/niko_ios/ios mobile/ios
+
+      - name: Configure app identity, permissions, and local HTTP access
+        env:
+          NIKO_API_BASE_URL: ${{ inputs.api_base_url }}
+        run: |
+          python3 - <<'PY'
+          import ipaddress
+          import os
+          import plistlib
+          from pathlib import Path
+          from urllib.parse import urlparse
+
+          api_url = urlparse(os.environ["NIKO_API_BASE_URL"])
+          if api_url.scheme not in ("http", "https") or not api_url.hostname:
+              raise SystemExit("NIKO_API_BASE_URL must be a valid http:// or https:// URL")
+
+          plist_path = Path("mobile/ios/Runner/Info.plist")
+          with plist_path.open("rb") as f:
+              plist = plistlib.load(f)
+
+          plist["CFBundleDisplayName"] = "NIKO"
+          plist["NSSpeechRecognitionUsageDescription"] = (
+              "NIKO uses speech recognition to turn your spoken words into message text."
+          )
+          plist["NSMicrophoneUsageDescription"] = (
+              "NIKO uses the microphone only when you tap the voice input button."
+          )
+          plist["NSLocalNetworkUsageDescription"] = (
+              "NIKO connects to your NIKO AI engine running on your computer over your local Wi-Fi network."
+          )
+
+          ats = plist.setdefault("NSAppTransportSecurity", {})
+          ats["NSAllowsLocalNetworking"] = True
+
+          if api_url.scheme == "http":
+              host = api_url.hostname
+              try:
+                  ipaddress.ip_address(host)
+              except ValueError:
+                  pass
+              domains = ats.setdefault("NSExceptionDomains", {})
+              exception = domains.setdefault(host, {})
+              exception["NSExceptionAllowsInsecureHTTPLoads"] = True
+
+          with plist_path.open("wb") as f:
+              plistlib.dump(plist, f)
+          PY
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Analyze Dart code
+        working-directory: mobile
+        run: flutter analyze
+
+      - name: Run Flutter tests
+        working-directory: mobile
+        run: flutter test
+
+      - name: Build iOS device app without signing
+        working-directory: mobile
+        run: |
+          flutter build ios --release --no-codesign --dart-define=NIKO_API_BASE_URL="$NIKO_API_BASE_URL"
+
+      - name: Package unsigned IPA for AltStore
+        working-directory: mobile
+        run: |
+          test -d build/ios/iphoneos/Runner.app
+          mkdir -p Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/Runner.app
+          ditto -c -k --sequesterRsrc --keepParent Payload niko-ai-ios-unsigned.ipa
+          test -s niko-ai-ios-unsigned.ipa
+
+      - name: Upload unsigned iOS IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: niko-ai-ios-unsigned-ipa
+          path: mobile/niko-ai-ios-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
